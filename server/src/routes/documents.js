@@ -79,3 +79,12 @@ router.delete('/:id', requirePermission('drawings', 'edit'), async (req, res) =>
 });
 
 export default router;
+
+// File download route
+import { Router as Router2 } from 'express';
+const dlRouter = Router2();
+dlRouter.get('/api/download/:order_no/:category/:filename', (req, res) => {
+  const { order_no, category, filename } = req.params;
+  const filePath = path.resolve('uploads', order_no, category, filename);
+  res.sendFile(filePath, (err) => { if (err) res.status(404).json({ error: 'File not found' }); });
+});

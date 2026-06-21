@@ -17,7 +17,7 @@
     <el-table :data="docs" border stripe v-loading="loading">
       <el-table-column prop="order_no" label="订单号" width="120" />
       <el-table-column prop="original_name" label="文件名" min-width="180">
-        <template #default="{ row }"><a :href="`/api/uploads/${row.order_no}/${row.category}/${row.filename}`" target="_blank" style="color:#409eff">{{ row.original_name }}</a></template>
+        <template #default="{ row }"><a :href="`/api/download/${encodeURIComponent(row.order_no)}/${encodeURIComponent(row.category)}/${encodeURIComponent(row.filename)}`" target="_blank" style="color:#409eff">{{ row.original_name }}</a></template>
       </el-table-column>
       <el-table-column prop="category" label="分类" width="100" />
       <el-table-column label="版本" width="60" align="center">

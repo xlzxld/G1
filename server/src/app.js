@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import knex from 'knex';
@@ -16,7 +17,6 @@ export const refreshBlacklist = new Set();
 
 const app = express();
 app.use(cors());
-app.use("/api/uploads", express.static("uploads"));
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
@@ -26,6 +26,14 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/documents', documentRoutes);
+
+// File download — custom route to handle Chinese filenames
+app.get('/api/download/:order_no/:category/:filename', (req, res) => {
+  const { order_no, category } = req.params;
+  const filename = decodeURIComponent(req.params.filename);
+  const fp = path.resolve('uploads', decodeURIComponent(order_no), decodeURIComponent(category), filename);
+  res.sendFile(fp, (err) => { if (err) res.status(404).json({ error: 'File not found' }); });
+});
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
