@@ -72,6 +72,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useAuthStore } from '../stores/auth.js';
 import api from '../api/index.js';
 
 const pages = [
@@ -88,6 +89,7 @@ const pages = [
 ];
 
 const users = ref([]);
+const auth = useAuthStore();
 const loading = ref(false);
 const formVisible = ref(false);
 const permVisible = ref(false);

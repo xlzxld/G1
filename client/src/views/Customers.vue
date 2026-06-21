@@ -10,8 +10,13 @@
     </div>
     <el-table :data="customers" border stripe v-loading="loading" @row-click="row => router.push(`/customers/${row.id}`)" style="cursor:pointer">
       <el-table-column prop="name" label="客户名称" min-width="160" />
-      <el-table-column prop="contact" label="联系人" width="100" />
-      <el-table-column prop="phone" label="电话" width="130" />
+      <el-table-column label="联系方式" min-width="200">
+        <template #default="{ row }">
+          <span v-for="(m, i) in parseMethods(row.contact_methods)" :key="i" style="margin-right:8px;">
+            <el-tag size="small" type="info">{{ m.type }}</el-tag> {{ m.value }}
+          </span>
+        </template>
+      </el-table-column>
       <el-table-column prop="address" label="地址" width="120" />
       <el-table-column prop="created_at" label="创建时间" width="120" />
       <el-table-column label="操作" width="120">
@@ -25,12 +30,22 @@
     <el-dialog v-model="formVisible" :title="editing ? '编辑客户' : '新建客户'" width="500px">
       <el-form :model="form" label-width="70px">
         <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
-        <el-form-item label="联系人"><el-input v-model="form.contact" /></el-form-item>
-        <el-form-item label="电话"><el-input v-model="form.phone" /></el-form-item>
         <el-form-item label="地址"><el-input v-model="form.address" /></el-form-item>
-        <el-form-item label="微信"><el-input v-model="form.wechat" /></el-form-item>
-        <el-form-item label="邮箱"><el-input v-model="form.email" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="form.notes" type="textarea" /></el-form-item>
+        <el-divider content-position="left">联系方式 <span style="color:#f56c6c">*</span></el-divider>
+        <div v-for="(m, i) in form.contact_methods" :key="i" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+          <el-select v-model="m.type" style="width:120px" placeholder="类型">
+            <el-option v-for="t in contactTypes" :key="t" :value="t" :label="t" />
+            <el-option value="__custom__" label="自定义...">
+              <template #default>
+                <el-input v-model="customType" placeholder="输入类型" size="small" @click.stop />
+              </template>
+            </el-option>
+          </el-select>
+          <el-input v-model="m.value" placeholder="值" style="flex:1" />
+          <el-button :disabled="form.contact_methods.length <= 1" @click="form.contact_methods.splice(i,1)" type="danger" size="small" circle>×</el-button>
+        </div>
+        <el-button size="small" @click="form.contact_methods.push({type:'电话',value:''})">+ 添加联系方式</el-button>
       </el-form>
       <template #footer>
         <el-button @click="formVisible = false">取消</el-button>
@@ -47,29 +62,24 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
 
 const router = useRouter();
-const customers = ref([]);
-const loading = ref(false);
-const keyword = ref('');
-const formVisible = ref(false);
-const editing = ref(null);
-const saving = ref(false);
-const form = reactive({ name: '', contact: '', phone: '', address: '', wechat: '', email: '', notes: '' });
+const customers = ref([]); const loading = ref(false); const keyword = ref('');
+const formVisible = ref(false); const editing = ref(null); const saving = ref(false);
+const form = reactive({ name: '', address: '', notes: '', contact_methods: [{type:'电话',value:''}] });
+const contactTypes = ['电话', '微信', 'QQ', '邮箱', '联系人', '传真', '地址'];
 
 onMounted(fetchData);
 async function fetchData() { loading.value = true; try { const r = await api.get('/customers', { params: { keyword: keyword.value } }); customers.value = r.data; } catch {} finally { loading.value = false; } }
-function openCreate() { editing.value = null; Object.assign(form, { name: '', contact: '', phone: '', address: '', wechat: '', email: '', notes: '' }); formVisible.value = true; }
-function openEdit(row) { editing.value = row; Object.assign(form, { name: row.name, contact: row.contact, phone: row.phone, address: row.address, wechat: row.wechat, email: row.email, notes: row.notes }); formVisible.value = true; }
-
+function parseMethods(raw) { try { return typeof raw === 'string' ? JSON.parse(raw) : (raw || []); } catch { return []; } }
+function openCreate() { editing.value = null; Object.assign(form, { name: '', address: '', notes: '', contact_methods: [{type:'电话',value:''}] }); formVisible.value = true; }
+function openEdit(row) { editing.value = row; Object.assign(form, { name: row.name, address: row.address, notes: row.notes, contact_methods: parseMethods(row.contact_methods) }); if (form.contact_methods.length === 0) form.contact_methods.push({type:'电话',value:''}); formVisible.value = true; }
 async function save() {
   saving.value = true;
   try {
-    if (editing.value) { await api.put(`/customers/${editing.value.id}`, form); } else { await api.post('/customers', form); }
+    const body = { name: form.name, address: form.address, notes: form.notes, contact_methods: form.contact_methods.filter(m => m.value.trim()) };
+    if (editing.value) { await api.put(`/customers/${editing.value.id}`, body); } else { await api.post('/customers', body); }
     formVisible.value = false; await fetchData(); ElMessage.success('保存成功');
   } catch (e) { ElMessage.error(e.response?.data?.error || '保存失败'); }
   finally { saving.value = false; }
 }
-
-async function confirmDelete(row) {
-  try { await ElMessageBox.confirm(`确定删除客户 ${row.name}？`, '确认', { type: 'warning' }); await api.delete(`/customers/${row.id}`); await fetchData(); ElMessage.success('已删除'); } catch {}
-}
+async function confirmDelete(row) { try { await ElMessageBox.confirm(`确定删除客户 ${row.name}？`, '确认', { type: 'warning' }); await api.delete(`/customers/${row.id}`); await fetchData(); ElMessage.success('已删除'); } catch {} }
 </script>

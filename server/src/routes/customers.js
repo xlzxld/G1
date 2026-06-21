@@ -10,15 +10,18 @@ router.use(requirePermission('customers', 'view'));
 router.get('/', async (req, res) => {
   const { keyword } = req.query;
   let q = db('customers').orderBy('updated_at', 'desc');
-  if (keyword) q = q.where('name', 'like', `%${keyword}%`).orWhere('contact', 'like', `%${keyword}%`).orWhere('phone', 'like', `%${keyword}%`);
+  if (keyword) q = q.where('name', 'like', `%${keyword}%`).orWhere('contact_methods', 'like', `%${keyword}%`);
   const rows = await q;
   res.json(rows);
 });
 
 router.post('/', requirePermission('customers', 'edit'), async (req, res) => {
-  const { name, contact, phone, address, wechat, email, notes } = req.body;
+  const { name, address, notes, contact_methods } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
-  const [id] = await db('customers').insert({ name, contact: contact || '', phone: phone || '', address: address || '', wechat: wechat || '', email: email || '', notes: notes || '' });
+  if (!contact_methods || !Array.isArray(contact_methods) || contact_methods.length === 0) {
+    return res.status(400).json({ error: 'At least one contact method required' });
+  }
+  const [id] = await db('customers').insert({ name, address: address || '', notes: notes || '', contact_methods: JSON.stringify(contact_methods) });
   res.status(201).json({ id, name });
 });
 
@@ -29,9 +32,10 @@ router.get('/:id', async (req, res) => {
 });
 
 router.put('/:id', requirePermission('customers', 'edit'), async (req, res) => {
-  const allowed = ['name', 'contact', 'phone', 'address', 'wechat', 'email', 'notes'];
+  const allowed = ['name', 'address', 'notes'];
   const updates = { updated_at: new Date().toISOString() };
   for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
+  if (req.body.contact_methods !== undefined) updates.contact_methods = JSON.stringify(req.body.contact_methods);
   await db('customers').where({ id: req.params.id }).update(updates);
   res.json({ updated: true });
 });

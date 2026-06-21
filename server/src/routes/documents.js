@@ -9,6 +9,13 @@ import { requirePermission } from '../middleware/permissions.js';
 const uploadDir = path.resolve('uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml'];
+
+function imageFilter(_req, file, cb) {
+  if (IMAGE_TYPES.includes(file.mimetype)) return cb(null, true);
+  cb(new Error('只允许上传图片文件 (png, jpg, gif, webp, bmp, svg)'), false);
+}
+
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
     const { order_no } = req.params;
@@ -22,7 +29,7 @@ const storage = multer.diskStorage({
     cb(null, `v${ts}-${file.originalname}`);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 50 * 1024 * 1024 } });
 
 const router = Router();
 router.use(authMiddleware);
@@ -36,7 +43,12 @@ router.get('/', async (req, res) => {
   res.json(await q);
 });
 
-router.post('/upload/:order_no', requirePermission('drawings', 'edit'), upload.single('file'), async (req, res) => {
+router.post('/upload/:order_no', requirePermission('drawings', 'edit'), (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const order = await db('orders').where({ order_no: req.params.order_no }).first();
   if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -45,16 +57,23 @@ router.post('/upload/:order_no', requirePermission('drawings', 'edit'), upload.s
   const last = await db('documents').where({ order_id: order.id, category }).orderBy('version', 'desc').first();
   const version = (last?.version || 0) + 1;
 
-  // Deprecate previous versions in same category
   await db('documents').where({ order_id: order.id, category, status: 'active' }).update({ status: 'deprecated' });
 
   const [id] = await db('documents').insert({
     order_id: order.id, filename: req.file.filename, original_name: req.file.originalname,
-    category, version, status: 'active',
+    category, version, status: 'active', title: req.body.title || '', description: req.body.description || '',
     file_path: req.file.path, file_size: req.file.size, mime_type: req.file.mimetype,
     uploaded_by: req.user.id,
   });
   res.status(201).json({ id, version, filename: req.file.originalname, category });
+});
+
+router.put('/:id', requirePermission('drawings', 'edit'), async (req, res) => {
+  const allowed = ['title', 'description', 'status'];
+  const updates = {};
+  for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
+  await db('documents').where({ id: req.params.id }).update(updates);
+  res.json({ updated: true });
 });
 
 router.put('/:id/status', requirePermission('drawings', 'edit'), async (req, res) => {
@@ -62,7 +81,6 @@ router.put('/:id/status', requirePermission('drawings', 'edit'), async (req, res
   if (!['active', 'pending', 'deprecated'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
   const doc = await db('documents').where({ id: req.params.id }).first();
   if (!doc) return res.status(404).json({ error: 'Not found' });
-
   if (status === 'active') {
     await db('documents').where({ order_id: doc.order_id, category: doc.category, status: 'active' }).whereNot({ id: doc.id }).update({ status: 'deprecated' });
   }
@@ -79,12 +97,3 @@ router.delete('/:id', requirePermission('drawings', 'edit'), async (req, res) =>
 });
 
 export default router;
-
-// File download route
-import { Router as Router2 } from 'express';
-const dlRouter = Router2();
-dlRouter.get('/api/download/:order_no/:category/:filename', (req, res) => {
-  const { order_no, category, filename } = req.params;
-  const filePath = path.resolve('uploads', order_no, category, filename);
-  res.sendFile(filePath, (err) => { if (err) res.status(404).json({ error: 'File not found' }); });
-});
