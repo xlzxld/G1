@@ -14,11 +14,11 @@ const routes = [
   { path: '/orders/:id', name: 'OrderDetail', component: () => import('../views/OrderDetail.vue'), meta: { page: 'orders' } },
   { path: '/process-flow', name: 'ProcessFlow', component: () => import('../views/ProcessFlow.vue'), meta: { page: 'process_flow' } },
   { path: '/drawings', name: 'Drawings', component: () => import('../views/Drawings.vue'), meta: { page: 'drawings' } },
-  { path: '/inventory', name: 'Inventory', component: placeholder('库存管理'), meta: { page: 'inventory' } },
+  { path: '/inventory', name: 'Inventory', component: () => import('../views/Inventory.vue'), meta: { page: 'inventory' } },
   { path: '/users', name: 'Users', component: () => import('../views/Users.vue'), meta: { page: 'users' } },
-  { path: '/notifications', name: 'Notifications', component: placeholder('通知中心'), meta: { page: 'notifications' } },
+  { path: '/notifications', name: 'Notifications', component: () => import('../views/Notifications.vue'), meta: { page: 'notifications' } },
   { path: '/settings', name: 'Settings', component: placeholder('系统设置'), meta: { page: 'settings' } },
-  { path: '/outsourcing', name: 'Outsourcing', component: placeholder('外协管理'), meta: { page: 'outsourcing' } },
+  { path: '/outsourcing', name: 'Outsourcing', component: () => import('../views/Outsourcing.vue'), meta: { page: 'outsourcing' } },
 ];
 
 const router = createRouter({ history: createWebHistory(), routes });

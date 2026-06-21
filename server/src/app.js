@@ -11,6 +11,9 @@ import orderRoutes from './routes/orders.js';
 import customerRoutes from './routes/customers.js';
 import dashboardRoutes from './routes/dashboard.js';
 import documentRoutes from './routes/documents.js';
+import inventoryRoutes from './routes/inventory.js';
+import notificationRoutes from './routes/notifications.js';
+import vendorRoutes from './routes/vendors.js';
 
 export const db = knex(knexConfig);
 export const refreshBlacklist = new Set();
@@ -26,8 +29,10 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/vendors', vendorRoutes);
 
-// File download — custom route to handle Chinese filenames
 app.get('/api/download/:order_no/:category/:filename', (req, res) => {
   const { order_no, category } = req.params;
   const filename = decodeURIComponent(req.params.filename);
