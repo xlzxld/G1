@@ -48,9 +48,16 @@ export async function rollbackStep(stepId, userId) {
   });
 
   const flow = await db('process_flows').where({ id: step.flow_id }).first();
+  // When rolling back, find the correct previous step.
+  // If the rolled-back step is parallel, go before the parallel group starts.
+  let prevSeq = step.seq - 1;
+  if (step.can_parallel) {
+    const allSteps = await db('process_steps').where({ flow_id: flow.id }).orderBy('seq', 'asc');
+    while (prevSeq >= 0 && allSteps[prevSeq]?.can_parallel) prevSeq--;
+  }
   const prevStep = await db('process_steps')
-    .where({ flow_id: flow.id }).where('seq', '<', step.seq)
-    .orderBy('seq', 'desc').first();
+    .where({ flow_id: flow.id }).where('seq', prevSeq)
+    .first();
 
   const statusName = prevStep ? prevStep.name + '进行中' : 'draft';
   await db('orders').where({ id: flow.order_id }).update({

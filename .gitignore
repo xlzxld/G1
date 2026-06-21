@@ -3,3 +3,4 @@ dist/
 data/mes.db
 .DS_Store
 *.log
+.env
