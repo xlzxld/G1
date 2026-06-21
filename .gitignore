@@ -1,6 +1,11 @@
 node_modules/
 dist/
-data/mes.db
 .DS_Store
 *.log
 .env
+.gstack/
+uploads/
+server/uploads/
+server/data/
+.vite/
+client/dist/
