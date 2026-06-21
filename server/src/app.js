@@ -5,6 +5,8 @@ import knex from 'knex';
 import knexConfig from '../knexfile.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
+import processFlowRoutes from './routes/process-flows.js';
+import orderRoutes from './routes/orders.js';
 
 export const db = knex(knexConfig);
 export const refreshBlacklist = new Set();
@@ -15,6 +17,8 @@ app.use(express.json());
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/process-flows', processFlowRoutes);
+app.use('/api/orders', orderRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
