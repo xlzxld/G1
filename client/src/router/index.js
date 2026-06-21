@@ -13,7 +13,7 @@ const routes = [
   { path: '/orders', name: 'Orders', component: () => import('../views/Orders.vue'), meta: { page: 'orders' } },
   { path: '/orders/:id', name: 'OrderDetail', component: () => import('../views/OrderDetail.vue'), meta: { page: 'orders' } },
   { path: '/process-flow', name: 'ProcessFlow', component: () => import('../views/ProcessFlow.vue'), meta: { page: 'process_flow' } },
-  { path: '/drawings', name: 'Drawings', component: placeholder('图纸管理'), meta: { page: 'drawings' } },
+  { path: '/drawings', name: 'Drawings', component: () => import('../views/Drawings.vue'), meta: { page: 'drawings' } },
   { path: '/inventory', name: 'Inventory', component: placeholder('库存管理'), meta: { page: 'inventory' } },
   { path: '/users', name: 'Users', component: () => import('../views/Users.vue'), meta: { page: 'users' } },
   { path: '/notifications', name: 'Notifications', component: placeholder('通知中心'), meta: { page: 'notifications' } },
