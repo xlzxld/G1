@@ -17,7 +17,7 @@ const routes = [
   { path: '/inventory', name: 'Inventory', component: () => import('../views/Inventory.vue'), meta: { page: 'inventory' } },
   { path: '/users', name: 'Users', component: () => import('../views/Users.vue'), meta: { page: 'users' } },
   { path: '/notifications', name: 'Notifications', component: () => import('../views/Notifications.vue'), meta: { page: 'notifications' } },
-  { path: '/settings', name: 'Settings', component: placeholder('系统设置'), meta: { page: 'settings' } },
+  { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue'), meta: { page: 'settings' } },
   { path: '/outsourcing', name: 'Outsourcing', component: () => import('../views/Outsourcing.vue'), meta: { page: 'outsourcing' } },
 ];
 
