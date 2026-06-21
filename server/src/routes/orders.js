@@ -9,12 +9,11 @@ router.use(authMiddleware);
 router.use(requirePermission('orders', 'view'));
 
 router.get('/', async (req, res) => {
-  const { keyword, status, customer_name, priority, sort_by, sort_order, page, limit } = req.query;
+  const { keyword, status, priority, sort_by, sort_order, page, limit } = req.query;
   let q = db('orders').select('orders.*', 'ps.name as current_step_name').leftJoin('process_steps as ps', 'orders.current_step_id', 'ps.id');
   if (keyword) q = q.where(function () { this.where('order_no', 'like', `%${keyword}%`).orWhere('product_name', 'like', `%${keyword}%`).orWhere('customer_name', 'like', `%${keyword}%`); });
   if (status) q = q.where('orders.status', status);
-  if (customer_name) q = q.where('orders.customer_name', 'like', `%${customer_name}%`);
-  if (priority !== undefined) q = q.where('orders.priority', priority);
+  if (priority !== undefined && priority !== '') q = q.where('orders.priority', priority);
   const countQ = q.clone().count('* as total').first();
   const col = sort_by || 'created_at';
   const dir = sort_order === 'asc' ? 'asc' : 'desc';
@@ -31,9 +30,16 @@ router.post('/', requirePermission('orders', 'edit'), async (req, res) => {
   if (!order_no || !product_name) return res.status(400).json({ error: 'order_no and product_name required' });
   const existing = await db('orders').where({ order_no }).first();
   if (existing) return res.status(409).json({ error: 'Order number already exists' });
+  // Resolve customer_name from customer_id if provided
+  let resolvedCustomerName = customer_name || '';
+  if (req.body.customer_id) {
+    const cust = await db('customers').where({ id: req.body.customer_id }).first();
+    if (cust) resolvedCustomerName = cust.name;
+  }
   const [orderId] = await db('orders').insert({
-    order_no, product_name, customer_name: customer_name || '',
-    priority: priority || 0, status: 'draft',
+    order_no, product_name, customer_name: resolvedCustomerName,
+    customer_id: req.body.customer_id || null,
+    priority: priority || 0, status: 'in_progress',
     shipment_date: shipment_date || null, notes: notes || '',
     created_by: req.user.id,
   });
@@ -54,8 +60,16 @@ router.get('/:id', async (req, res) => {
 
 router.put('/:id', requirePermission('orders', 'edit'), async (req, res) => {
   const updates = { updated_at: new Date().toISOString() };
-  const allowed = ['product_name', 'customer_name', 'priority', 'shipment_date', 'notes'];
+  const allowed = ['product_name', 'priority', 'shipment_date', 'notes'];
   for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
+  // Handle customer_id: resolve name snapshot and store both
+  if (req.body.customer_id !== undefined) {
+    updates.customer_id = req.body.customer_id || null;
+    if (req.body.customer_id) {
+      const cust = await db('customers').where({ id: req.body.customer_id }).first();
+      updates.customer_name = cust ? cust.name : '';
+    }
+  }
   await db('orders').where({ id: req.params.id }).update(updates);
   res.json({ updated: true });
 });

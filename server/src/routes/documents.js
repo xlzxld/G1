@@ -26,7 +26,9 @@ const storage = multer.diskStorage({
   },
   filename: (_req, file, cb) => {
     const ts = Date.now();
-    cb(null, `v${ts}-${file.originalname}`);
+    // Fix Latin-1/UTF-8 encoding issue for Chinese filenames
+    const safeName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    cb(null, `v${ts}-${safeName}`);
   },
 });
 const upload = multer({ storage, fileFilter: imageFilter, limits: { fileSize: 50 * 1024 * 1024 } });
@@ -37,7 +39,7 @@ router.use(requirePermission('drawings', 'view'));
 
 router.get('/', async (req, res) => {
   const { order_id, category } = req.query;
-  let q = db('documents').select('documents.*', 'orders.order_no').leftJoin('orders', 'documents.order_id', 'orders.id').orderBy('documents.created_at', 'desc');
+  let q = db('documents').select('documents.*', 'orders.order_no', 'orders.product_name').leftJoin('orders', 'documents.order_id', 'orders.id').orderBy('documents.created_at', 'desc');
   if (order_id) q = q.where('documents.order_id', order_id);
   if (category) q = q.where('documents.category', category);
   res.json(await q);
@@ -60,7 +62,7 @@ router.post('/upload/:order_no', requirePermission('drawings', 'edit'), (req, re
   await db('documents').where({ order_id: order.id, category, status: 'active' }).update({ status: 'deprecated' });
 
   const [id] = await db('documents').insert({
-    order_id: order.id, filename: req.file.filename, original_name: req.file.originalname,
+    order_id: order.id, filename: req.file.filename, original_name: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
     category, version, status: 'active', title: req.body.title || '', description: req.body.description || '',
     file_path: req.file.path, file_size: req.file.size, mime_type: req.file.mimetype,
     uploaded_by: req.user.id,

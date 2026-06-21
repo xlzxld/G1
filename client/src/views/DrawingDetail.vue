@@ -6,7 +6,7 @@
     </div>
     <el-row :gutter="16">
       <el-col :span="14">
-        <el-image v-if="isImage(doc.mime_type)" :src="`/api/download/${encodeURIComponent(doc.order_no)}/${encodeURIComponent(doc.category)}/${encodeURIComponent(doc.filename)}`" style="width:100%;max-height:500px;object-fit:contain;background:#f5f5f5;border-radius:8px" fit="contain" />
+        <el-image v-if="isImage(doc.mime_type)" :src="`/api/download/${encodeURIComponent(doc.order_no)}/${encodeURIComponent(doc.category)}/${encodeURIComponent(doc.filename)}`" style="width:100%;object-fit:contain;background:#f5f5f5;border-radius:8px" fit="contain" />
         <el-empty v-else description="非图片文件" />
       </el-col>
       <el-col :span="10">
@@ -15,7 +15,10 @@
             <el-form-item label="标题"><el-input v-model="form.title" /></el-form-item>
             <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="4" /></el-form-item>
             <el-form-item label="文件名">{{ doc.original_name }}</el-form-item>
-            <el-form-item label="订单">{{ doc.order_no }}</el-form-item>
+            <el-form-item label="订单">
+              <router-link :to="`/orders/${doc.order_id}`" style="color:#409eff;text-decoration:none">{{ doc.order_no }}</router-link>
+              <span style="margin-left:8px;color:#606266">{{ doc.product_name || '' }}</span>
+            </el-form-item>
             <el-form-item label="分类">{{ doc.category }}</el-form-item>
             <el-form-item label="版本">V{{ doc.version }}</el-form-item>
             <el-form-item label="状态"><el-tag :type="doc.status==='active'?'success':doc.status==='deprecated'?'info':'warning'" size="small">{{ statusLabel(doc.status) }}</el-tag></el-form-item>
