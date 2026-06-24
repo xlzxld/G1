@@ -21,6 +21,14 @@
       </el-table-column>
       <el-table-column prop="original_name" label="文件名" min-width="160" />
       <el-table-column prop="category" label="分类" width="100" />
+      <el-table-column label="订单" width="160">
+        <template #default="{ row }">
+          <router-link :to="`/orders/${row.order_id}`" style="color:#409eff;text-decoration:none">
+            <div>{{ row.order_no }}</div>
+            <div style="font-size:12px;color:#909399">{{ row.product_name?.length > 12 ? row.product_name.slice(0,12)+'…' : row.product_name }}</div>
+          </router-link>
+        </template>
+      </el-table-column>
       <el-table-column label="版本" width="60" align="center"><template #default="{ row }">V{{ row.version }}</template></el-table-column>
       <el-table-column label="状态" width="100" align="center"><template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag></template></el-table-column>
       <el-table-column label="大小" width="100"><template #default="{ row }">{{ formatSize(row.file_size) }}</template></el-table-column>
@@ -64,7 +72,7 @@ onMounted(async () => { try { orders.value = (await api.get('/orders')).data.dat
 async function fetchDocs() { loading.value = true; const params = {}; if (filterOrder.value) params.order_id = filterOrder.value; if (filterCat.value) params.category = filterCat.value; try { docs.value = (await api.get('/documents', { params })).data; } catch {} finally { loading.value = false; } }
 function onFileChange(f) { uploadFile.value = f.raw; }
 function isImage(mime) { return mime?.startsWith('image/'); }
-async function doUpload() { uploading.value = true; try { const fd = new FormData(); fd.append('file', uploadFile.value); fd.append('category', uploadCat.value); await api.post(`/documents/upload/${uploadOrderNo.value}`, fd); uploadVisible.value = false; uploadFile.value = null; await fetchDocs(); ElMessage.success('上传成功'); } catch (e) { ElMessage.error(e.response?.data?.error || '上传失败'); } finally { uploading.value = false; } }
+async function doUpload() { uploading.value = true; try { const fd = new FormData(); fd.append('category', uploadCat.value); fd.append('file', uploadFile.value); await api.post(`/documents/upload/${uploadOrderNo.value}`, fd); uploadVisible.value = false; uploadFile.value = null; await fetchDocs(); ElMessage.success('上传成功'); } catch (e) { ElMessage.error(e.response?.data?.error || '上传失败'); } finally { uploading.value = false; } }
 async function confirmDelete(row) { try { await ElMessageBox.confirm(`确定删除 ${row.original_name}？`, '确认', { type: 'warning' }); await api.delete(`/documents/${row.id}`); await fetchDocs(); ElMessage.success('已删除'); } catch {} }
 function statusType(s) { return s === 'active' ? 'success' : s === 'deprecated' ? 'info' : 'warning'; }
 function statusLabel(s) { return s === 'active' ? '使用中' : s === 'deprecated' ? '作废' : '待审核'; }

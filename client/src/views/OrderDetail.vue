@@ -2,8 +2,9 @@
   <div v-if="order">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2>订单 {{ order.order_no }}</h2>
-      <div>
-        <el-button @click="forceStatusVisible = true" v-if="isAdmin">强制改状态</el-button>
+      <div style="display:flex;gap:8px">
+        <el-button v-if="isAdmin" @click="setOrderStatus('paused')" type="warning" :disabled="order.status==='paused'||order.status==='terminated'||order.status==='completed'">暂停</el-button>
+        <el-button v-if="isAdmin" @click="setOrderStatus('terminated')" type="danger" :disabled="order.status==='terminated'">终止</el-button>
         <router-link to="/orders"><el-button>返回列表</el-button></router-link>
       </div>
     </div>
@@ -11,9 +12,10 @@
       <el-descriptions-item label="订单号">{{ order.order_no }}</el-descriptions-item>
       <el-descriptions-item label="产品名称">{{ order.product_name }}</el-descriptions-item>
       <el-descriptions-item label="客户">{{ order.customer_name || '—' }}</el-descriptions-item>
-      <el-descriptions-item label="状态"><el-tag :type="statusType(order.status)">{{ order.status }}</el-tag></el-descriptions-item>
+      <el-descriptions-item label="状态"><el-tag :type="statusType(order.status)">{{ statusLabel(order.status) }}</el-tag></el-descriptions-item>
       <el-descriptions-item label="优先级"><el-tag :type="prioType(order.priority)">{{ ['普通','紧急','特急'][order.priority] || '普通' }}</el-tag></el-descriptions-item>
       <el-descriptions-item label="交货日期">{{ order.shipment_date || '—' }}</el-descriptions-item>
+      <el-descriptions-item label="备注" :span="3">{{ order.notes || '—' }}</el-descriptions-item>
     </el-descriptions>
 
     <el-divider />
@@ -40,15 +42,6 @@
     </el-timeline>
     <el-empty v-else description="暂无工序" />
 
-    <el-dialog v-model="forceStatusVisible" title="强制修改状态" width="300px">
-      <el-select v-model="forceStatus" placeholder="选择状态">
-        <el-option label="草稿" value="draft" /><el-option label="进行中" value="in_progress" /><el-option label="客户确认" value="customer_confirm" /><el-option label="已完成" value="completed" /><el-option label="暂停" value="paused" />
-      </el-select>
-      <template #footer>
-        <el-button @click="forceStatusVisible = false">取消</el-button>
-        <el-button type="primary" @click="doForceStatus">确认</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -62,8 +55,6 @@ import api from '../api/index.js';
 const route = useRoute();
 const auth = useAuthStore();
 const order = ref(null);
-const forceStatusVisible = ref(false);
-const forceStatus = ref('');
 const isAdmin = auth.isAdmin;
 
 onMounted(fetchOrder);
@@ -87,11 +78,21 @@ async function doSkip(step) {
   try { await api.post(`/orders/${order.value.id}/steps/${step.id}/skip`); await fetchOrder(); ElMessage.success('已跳过'); }
   catch (e) { ElMessage.error(e.response?.data?.error || '操作失败'); }
 }
-async function doForceStatus() {
-  try { await api.put(`/orders/${order.value.id}/status`, { status: forceStatus.value }); forceStatusVisible.value = false; await fetchOrder(); ElMessage.success('状态已更新'); }
-  catch (e) { ElMessage.error(e.response?.data?.error || '操作失败'); }
+async function setOrderStatus(status) {
+  const label = { paused: '暂停', terminated: '终止' }[status];
+  try {
+    await ElMessageBox.confirm(`确定将订单状态改为「${label}」？`, '确认', { type: 'warning' });
+    await api.put(`/orders/${order.value.id}/status`, { status });
+    await fetchOrder();
+    ElMessage.success('状态已更新');
+  } catch {}
 }
 
-function statusType(s) { if (s === 'completed') return 'success'; if (s === 'paused') return 'danger'; if (s === 'draft') return 'info'; return 'warning'; }
+function statusLabel(s) {
+  const m = { draft: '草稿', in_progress: '进行中', progress: '进行中', completed: '已完成', paused: '暂停', terminated: '终止' };
+  return m[s] || s;
+}
+function statusType(s) { if (s === 'completed') return 'success'; if (s === 'paused' || s === 'terminated') return 'danger'; if (s === 'in_progress' || s === 'progress') return 'warning'; return 'info'; }
 function prioType(p) { return p === 2 ? 'danger' : p === 1 ? 'warning' : 'info'; }
 </script>
+import { ElMessage, ElMessageBox } from 'element-plus';
