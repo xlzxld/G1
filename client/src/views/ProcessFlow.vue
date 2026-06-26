@@ -1,8 +1,11 @@
 <template>
   <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2>工艺模板</h2>
-      <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新建模板</el-button>
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">工艺模板</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">生产标准工艺流程配置</p>
+      </div>
+      <el-button v-if="auth.canEdit('process_flow')" type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新建模板</el-button>
     </div>
     <el-table :data="flows" border stripe v-loading="loading" @row-click="selectFlow" highlight-current-row>
       <el-table-column prop="name" label="模板名称" />
@@ -10,8 +13,8 @@
       <el-table-column prop="updated_at" label="更新时间" width="180" />
       <el-table-column label="操作" width="200">
         <template #default="{ row }">
-          <el-button size="small" @click.stop="editFlow(row)">编辑</el-button>
-          <el-button size="small" type="danger" @click.stop="confirmDelete(row)">删除</el-button>
+          <el-button v-if="auth.canEdit('process_flow')" size="small" @click.stop="editFlow(row)">编辑</el-button>
+          <el-button v-if="auth.canEdit('process_flow')" size="small" type="danger" @click.stop="confirmDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -55,19 +58,19 @@
         </el-table-column>
         <el-table-column label="操作" width="80" align="center">
           <template #default="{ $index }">
-            <el-button size="small" type="danger" @click="steps.splice($index, 1)">删除</el-button>
+            <el-button v-if="auth.canEdit('process_flow')" size="small" type="danger" @click="steps.splice($index, 1)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
-      <div style="margin-top:12px">
+      <div style="margin-top:12px" v-if="auth.canEdit('process_flow')">
         <el-button @click="addStep">添加步骤</el-button>
         <el-button type="primary" @click="saveSteps" :loading="savingSteps">保存步骤</el-button>
       </div>
     </div>
 
     <el-dialog v-model="formVisible" :title="editing ? '编辑模板' : '新建模板'" width="440px">
-      <el-form :model="form" label-width="70px">
-        <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="70px">
+        <el-form-item label="名称" prop="name"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" /></el-form-item>
       </el-form>
       <template #footer>
@@ -82,7 +85,9 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
+import { useAuthStore } from '../stores/auth.js';
 
+const auth = useAuthStore();
 const flows = ref([]);
 const loading = ref(false);
 const selectedFlow = ref(null);
@@ -91,7 +96,9 @@ const formVisible = ref(false);
 const editing = ref(null);
 const saving = ref(false);
 const savingSteps = ref(false);
+const formRef = ref(null);
 const form = reactive({ name: '', description: '' });
+const rules = { name: [{ required: true, message: '请输入模板名称', trigger: 'blur' }] };
 
 onMounted(fetchFlows);
 async function fetchFlows() { loading.value = true; try { const r = await api.get('/process-flows'); flows.value = r.data; } catch {} finally { loading.value = false; } }
@@ -100,15 +107,19 @@ function openCreate() { editing.value = null; Object.assign(form, { name: '', de
 function editFlow(row) { editing.value = row; Object.assign(form, { name: row.name, description: row.description }); formVisible.value = true; }
 
 async function saveFlow() {
-  saving.value = true;
-  try {
-    if (editing.value) { await api.put(`/process-flows/${editing.value.id}`, form); }
-    else { await api.post('/process-flows', form); }
-    formVisible.value = false;
-    await fetchFlows();
-    ElMessage.success('保存成功');
-  } catch (e) { ElMessage.error(e.response?.data?.error || '保存失败'); }
-  finally { saving.value = false; }
+  if (!formRef.value) return;
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return;
+    saving.value = true;
+    try {
+      if (editing.value) { await api.put(`/process-flows/${editing.value.id}`, form); }
+      else { await api.post('/process-flows', form); }
+      formVisible.value = false;
+      await fetchFlows();
+      ElMessage.success('保存成功');
+    } catch (e) { ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '保存失败'); }
+    finally { saving.value = false; }
+  });
 }
 
 async function confirmDelete(row) {
@@ -133,6 +144,9 @@ function updateDep(row, targetIdx) {
 }
 
 async function saveSteps() {
+  if (steps.value.some(s => !s.name || !s.name.trim())) {
+    return ElMessage.error('存在空缺的工序名称，请填写后再保存');
+  }
   savingSteps.value = true;
   try {
     const payload = steps.value.map((s, i) => ({
@@ -141,7 +155,7 @@ async function saveSteps() {
     }));
     await api.put(`/process-flows/${selectedFlow.value.id}/steps`, { steps: payload });
     ElMessage.success('步骤已保存');
-  } catch (e) { ElMessage.error(e.response?.data?.error || '保存失败'); }
+  } catch (e) { ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '保存失败'); }
   finally { savingSteps.value = false; }
 }
 </script>

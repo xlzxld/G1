@@ -8,3 +8,11 @@ server/uploads/*
 server/data/*
 .vite/
 client/dist/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+*.sqlite
+*.db

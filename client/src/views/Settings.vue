@@ -1,11 +1,12 @@
 <template>
-  <div>
-    <h2 style="margin-bottom:16px">系统设置</h2>
+  <div class="space-y-6">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">系统设置</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">系统参数与全局配置</p>
+      </div>
+    </div>
     <el-tabs>
-      <el-tab-pane label="基本设置">
-        <el-table :data="settings" border stripe><el-table-column prop="key" label="参数" width="200" /><el-table-column prop="value" label="值" /><el-table-column prop="category" label="分类" width="120" /><el-table-column label="操作" width="100"><template #default="{row}"><el-button size="small" @click="editSetting(row)">编辑</el-button></template></el-table-column></el-table>
-        <el-button style="margin-top:12px" @click="editSetting(null)">新增参数</el-button>
-      </el-tab-pane>
 
       <el-tab-pane label="修改密码">
         <el-form :model="pwd" label-width="100px" style="max-width:400px;margin-top:16px">
@@ -27,18 +28,20 @@
       </el-tab-pane>
 
       <el-tab-pane label="操作日志" v-if="auth.isAdmin">
-        <el-table :data="logs" border stripe max-height="500"><el-table-column prop="created_at" label="时间" width="160" /><el-table-column prop="display_name" label="操作人" width="100" /><el-table-column prop="action" label="操作" width="80" /><el-table-column prop="entity_type" label="类型" width="100" /><el-table-column prop="detail" label="详情" /></el-table>
+        <el-table :data="logs" border stripe max-height="500">
+          <el-table-column prop="created_at" label="时间" width="160" />
+          <el-table-column prop="display_name" label="操作人" width="100" />
+          <el-table-column prop="action" label="操作" width="80">
+            <template #default="{row}">{{ formatAction(row.action) }}</template>
+          </el-table-column>
+          <el-table-column prop="entity_type" label="类型" width="100">
+            <template #default="{row}">{{ formatEntity(row.entity_type) }}</template>
+          </el-table-column>
+          <el-table-column prop="detail" label="详情" />
+        </el-table>
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="setVisible" title="编辑参数" width="400px">
-      <el-form :model="setForm" label-width="60px">
-        <el-form-item label="参数"><el-input v-model="setForm.key" :disabled="!!setForm._id" /></el-form-item>
-        <el-form-item label="值"><el-input v-model="setForm.value" /></el-form-item>
-        <el-form-item label="分类"><el-input v-model="setForm.category" /></el-form-item>
-      </el-form>
-      <template #footer><el-button @click="setVisible=false">取消</el-button><el-button type="primary" @click="saveSetting">保存</el-button></template>
-    </el-dialog>
   </div>
 </template>
 
@@ -49,12 +52,10 @@ import { useAuthStore } from '../stores/auth.js';
 import api from '../api/index.js';
 
 const auth = useAuthStore();
-const settings = ref([]); const rules = ref([]); const logs = ref([]);
+const rules = ref([]); const logs = ref([]);
 const pwd = reactive({ current:'', newPwd:'', confirm:'' }); const pwdLoading = ref(false);
-const setVisible = ref(false); const setForm = reactive({ _id:null, key:'', value:'', category:'general' });
 
 onMounted(async () => {
-  try { settings.value = (await api.get('/settings')).data; } catch {}
   if (auth.isAdmin) { try { rules.value = (await api.get('/notifications/rules')).data; } catch {} try { logs.value = (await api.get('/settings/audit-logs')).data; } catch {} }
 });
 
@@ -65,11 +66,14 @@ async function changePwd() {
   catch (e) { ElMessage.error(e.response?.data?.error||'修改失败'); } finally { pwdLoading.value = false; }
 }
 
-function editSetting(row) { if (row) { setForm._id = row.id; setForm.key = row.key; setForm.category = row.category; setForm.value = row.value; } else { setForm._id = null; setForm.key = ''; setForm.value = ''; setForm.category = 'general'; } setVisible.value = true; }
+function formatAction(action) {
+  const map = { 'create': '新增', 'update': '修改', 'delete': '删除' };
+  return map[action] || action;
+}
 
-async function saveSetting() {
-  try { await api.put('/settings', { key: setForm.key, value: setForm.value }); setVisible.value = false; settings.value = (await api.get('/settings')).data; ElMessage.success('已保存'); }
-  catch (e) { ElMessage.error(e.response?.data?.error||'保存失败'); }
+function formatEntity(entity) {
+  const map = { 'customers': '客户管理', 'orders': '订单管理', 'inventory': '库存管理', 'process': '工艺流程', 'process-flows': '工艺模板', 'users': '账号管理', 'vendors': '外协管理', 'notifications': '通知中心', 'settings': '系统设置', 'auth': '登录认证' };
+  return map[entity] || entity;
 }
 
 async function toggleRule(row) { try { await api.put(`/notifications/rules/${row.id}`, { is_active: !row.is_active }); rules.value = (await api.get('/notifications/rules')).data; } catch {} }

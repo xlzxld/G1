@@ -13,8 +13,6 @@ const routes = [
   { path: '/orders', name: 'Orders', component: () => import('../views/Orders.vue'), meta: { page: 'orders' } },
   { path: '/orders/:id', name: 'OrderDetail', component: () => import('../views/OrderDetail.vue'), meta: { page: 'orders' } },
   { path: '/process-flow', name: 'ProcessFlow', component: () => import('../views/ProcessFlow.vue'), meta: { page: 'process_flow' } },
-  { path: '/drawings', name: 'Drawings', component: () => import('../views/Drawings.vue'), meta: { page: 'drawings' } },
-  { path: '/drawings/:id', name: 'DrawingDetail', component: () => import('../views/DrawingDetail.vue'), meta: { page: 'drawings' } },
   { path: '/inventory', name: 'Inventory', component: () => import('../views/Inventory.vue'), meta: { page: 'inventory' } },
   { path: '/users', name: 'Users', component: () => import('../views/Users.vue'), meta: { page: 'users' } },
   { path: '/notifications', name: 'Notifications', component: () => import('../views/Notifications.vue'), meta: { page: 'notifications' } },
@@ -32,8 +30,7 @@ router.beforeEach(async (to, _from, next) => {
   if (auth.isAdmin) return next();
   const page = to.meta.page;
   if (page) {
-    const perm = auth.permissions.find((p) => p.page_key === page);
-    if (!perm || !perm.can_view) {
+    if (!auth.canView(page)) {
       const first = auth.permissions.find((p) => p.can_view);
       if (first) { const path = '/' + (first.page_key === 'dashboard' ? '' : first.page_key.replace(/_/g, '-')); return next(path); }
       return next('/login');

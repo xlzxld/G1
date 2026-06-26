@@ -1,98 +1,55 @@
-# 热流道生产管理系统 (Hot Runner MES)
+# 汇易通热流道管理系统 V2 (Hot Runner MES API)
 
-一套面向热流道制造车间的生产执行系统，覆盖客户管理、订单录入、工序流转、图纸版本管理、库存跟踪和外协管理。
+一套轻量级、现代化的制造执行系统（MES），前后端分离架构，专为热流道及相关模具加工行业设计。包含客户管理、外协管理、工艺引擎、库存状态以及完整的订单调度闭环功能。
 
-## 快速开始
+## 🌟 核心特性
+- **纯净依赖**：仅需 Docker 环境即可一键拉起整个技术栈，无需在宿主机安装繁杂的 Python/Node.js 依赖。
+- **现代化架构**：
+  - 前端：`Vue 3` + `Vite` + `Element Plus` + `Tailwind CSS` (高颜值 Bento 风格面板，支持暗色模式)
+  - 后端：`Python` + `FastAPI` (原生高并发与数据校验) + `SQLAlchemy`
+  - 数据库：`PostgreSQL 15` (通过 Docker 编排)
+- **核心模块**：
+  - 订单与流程调度 (Orders & Process Flow)
+  - 动态外协及客户 CRM (Vendors & Customers)
+  - 实时仪表盘监控 (Dashboard)
+  - 图纸与技术文档版本控制 (Documents)
 
+## 🚀 极速启动指南 (Docker 方式)
+
+为了确保能在任何电脑上做到“克隆即用”，本项目已深度容器化。**不需要**在宿主机单独安装 Python 或 Node.js环境。
+
+### 1. 环境准备
+确保您的计算机上已安装了：
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/Mac) 或 Docker Engine (Linux)
+- [Git](https://git-scm.com/)
+
+### 2. 克隆项目
 ```bash
-# 后端 (http://localhost:3000)
-cd server && npm install && npm run dev
-
-# 前端 (http://localhost:5173)
-cd client && npm install && npm run dev
+git clone <repository_url> -b V2
+cd G1
 ```
 
-详细教程见 [快速上手](docs/tutorial-getting-started.md)。
-
-## 演示账号
-
-| 账号 | 密码 | 角色 |
-|------|------|------|
-| admin | admin123 | 管理员 |
-| laowang | 123456 | 车间工人 |
-| xiaoli | 123456 | 设计师 |
-
-## 功能模块
-
-- **仪表台** — 6 张可点击汇总卡片（今日待处理、进行中、客户确认、今日完成、我的待办）
-- **客户管理** — 动态联系方式、关联订单统计
-- **订单管理** — 搜索排序分页、工序时间线、状态流转
-- **工艺流程** — 步骤拖拽编辑、依赖/并行/外协配置、模板复制到订单
-- **图纸管理** — 图片上传预览、版本管理、可编辑元数据
-- **库存管理** — 总量/预留/预警、订单预留关联
-- **用户管理** — 权限矩阵配置、管理员防锁死
-- **通知中心** — 手动派发、规则引擎
-- **系统设置** — 参数/密码/通知规则/操作日志
-- **外协管理** — 外协厂商信息维护
-
-## 技术栈
-
-- **前端:** Vue 3 + Element Plus + Pinia + Vue Router + Vite + Axios
-- **后端:** Node.js + Express + better-sqlite3 + Knex + JWT + bcrypt
-- **数据库:** SQLite (14 张表, 迁移管理)
-- **文件存储:** 本地 `uploads/{订单号}/{分类}/`
-
-## 文档
-
-完整文档在 [`docs/`](docs/README.md):
-
-- [快速上手](docs/tutorial-getting-started.md)
-- [API 参考](docs/reference-api.md)
-- [数据库表结构](docs/reference-database.md)
-- [配置文件](docs/reference-configuration.md)
-- [系统架构](docs/explanation-architecture.md)
-- [权限模型](docs/explanation-permission-model.md)
-- [工序引擎](docs/explanation-process-engine.md)
-- [创建工艺流程](docs/howto-setup-workflow.md)
-- [管理用户和权限](docs/howto-manage-users.md)
-
-设计决策见 [DESIGN.md](DESIGN.md)。
-
-## 目录结构
-
+### 3. 一键启动
+在项目根目录运行以下命令拉起所有服务：
+```bash
+docker compose up -d
 ```
-.
-├── README.md
-├── DESIGN.md              # 设计文档和开发日志
-├── CLAUDE.md              # AI 编码助手上下文
-├── docs/                  # 完整文档
-│   ├── README.md
-│   ├── tutorial-getting-started.md
-│   ├── howto-*.md
-│   ├── reference-*.md
-│   └── explanation-*.md
-├── server/
-│   ├── src/
-│   │   ├── app.js         # 入口，Express 应用
-│   │   ├── middleware/    # auth, permissions, audit
-│   │   ├── routes/        # 10 个业务路由文件
-│   │   ├── services/      # processEngine.js
-│   │   └── data/          # migrations, seeds
-│   ├── uploads/           # 图纸文件存储
-│   ├── data/              # SQLite 数据库文件
-│   ├── knexfile.js
-│   ├── .env
-│   └── package.json
-└── client/
-    ├── src/
-    │   ├── main.js        # Vue 应用入口
-    │   ├── App.vue        # 布局 (侧边栏 + 顶栏 + 主体)
-    │   ├── router/        # 14 个路由定义 + 守卫
-    │   ├── stores/        # Pinia auth store
-    │   ├── api/           # Axios 实例 + 拦截器
-    │   ├── components/    # Sidebar
-    │   └── views/         # 15 个页面组件
-    ├── index.html
-    ├── vite.config.js
-    └── package.json
-```
+*提示：首次运行会自动拉取基础镜像，并执行 npm install 及 pip install（由于网络原因国内可能需要一定时间），后续启动即秒开。*
+
+### 4. 访问系统
+当服务启动完毕后，在浏览器访问：
+- **前端系统界面**：[http://localhost:5173](http://localhost:5173)
+- **后端 API 文档 (Swagger)**：[http://localhost:8080/docs](http://localhost:8080/docs)
+
+数据库已由 FastAPI 在首次启动时自动完成所有的表结构建置，您可直接登录使用！
+
+## 🛠️ 常见问题 (FAQ)
+
+**Q: 启动后界面一直是转圈/白屏？**
+A: 请检查后端容器是否正常运行，可使用 `docker compose logs backend` 检查后端是否已启动完毕。
+
+**Q: 想要修改代码后生效需要重启吗？**
+A: 容器已经通过 volume 挂载了本地的 `./client` 和 `./server-python` 目录，并分别开启了 Vite 客户端热重载和 FastAPI 服务端的热重载 (`--reload`)。您只需在宿主机修改代码，服务会**自动热更新**！
+
+**Q: 怎么完全清理本地环境并重置数据？**
+A: 使用 `docker compose down -v` 可以彻底停止服务并清理数据库挂载的数据卷。

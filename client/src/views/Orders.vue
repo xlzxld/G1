@@ -1,20 +1,26 @@
 <template>
-  <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2>订单管理</h2>
-      <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新建订单</el-button>
+  <div class="space-y-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">订单管理</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">生产订单调度与跟踪</p>
+      </div>
+      <el-button v-if="auth.canEdit('orders')" type="primary" @click="openCreate" color="#7aa2f7" dark><el-icon><Plus /></el-icon> 新建订单</el-button>
     </div>
-    <div class="search-bar">
+
+    <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-md">
       <el-input v-model="params.keyword" placeholder="搜索订单号/产品/客户" clearable style="width:240px" @keyup.enter="search" />
-      <el-select v-model="params.status" placeholder="状态" clearable style="width:140px;margin-left:8px">
-        <el-option label="进行中" value="in_progress" /><el-option label="已完成" value="completed" /><el-option label="暂停" value="paused" /><el-option label="终止" value="terminated" />
+      <el-select v-model="params.status" placeholder="状态" clearable style="width:140px">
+        <el-option label="进行中" value="in_progress" /><el-option label="已完成" value="completed" /><el-option label="暂停" value="paused" />
       </el-select>
-      <el-select v-model="params.priority" placeholder="优先级" clearable style="width:120px;margin-left:8px">
+      <el-select v-model="params.priority" placeholder="优先级" clearable style="width:120px">
         <el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" />
       </el-select>
-      <el-button type="primary" style="margin-left:8px" @click="search">搜索</el-button>
-      <el-button @click="reset">重置</el-button>
+      <el-button type="primary" @click="search" color="#7aa2f7" dark>搜索</el-button>
+      <el-button @click="reset" plain>重置</el-button>
     </div>
+    
+    <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl overflow-hidden shadow-md p-4">
     <el-table :data="orders" border stripe v-loading="loading" style="margin-top:12px" @sort-change="onSort" :default-sort="{prop:'created_at',order:'descending'}">
       <el-table-column prop="order_no" label="订单号" sortable="custom" width="120">
         <template #default="{ row }"><router-link :to="`/orders/${row.id}`" style="color:#409eff">{{ row.order_no }}</router-link></template>
@@ -36,18 +42,23 @@
       <el-table-column prop="notes" label="备注" min-width="120">
         <template #default="{ row }"><span :title="row.notes">{{ row.notes ? (row.notes.length > 20 ? row.notes.slice(0,20)+'…' : row.notes) : '—' }}</span></template>
       </el-table-column>
-      <el-table-column prop="shipment_date" label="交货日期" sortable="custom" width="120" />
-      <el-table-column prop="created_at" label="创建时间" sortable="custom" width="170">
-        <template #default="{ row }">{{ row.created_at?.slice(0,16) }}</template>
+      <el-table-column prop="shipment_date" label="交付日期" sortable="custom" width="150">
+        <template #default="{ row }">{{ row.shipment_date?.slice(0,16).replace('T', ' ') || '—' }}</template>
+      </el-table-column>
+      <el-table-column prop="created_at" label="创建时间" sortable="custom" width="150">
+        <template #default="{ row }">{{ row.created_at?.slice(0,16).replace('T', ' ') }}</template>
       </el-table-column>
       <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button size="small" type="danger" @click="confirmDelete(row)">删除</el-button>
+          <el-button v-if="auth.canEdit('orders')" size="small" @click="openEdit(row)">编辑</el-button>
+          <el-button v-if="auth.canEdit('orders')" size="small" type="danger" @click="confirmDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
-    <el-pagination style="margin-top:16px;justify-content:flex-end" background layout="total, sizes, prev, pager, next" :total="total" v-model:current-page="params.page" v-model:page-size="params.limit" :page-sizes="[10,20,50]" @change="fetchOrders" />
+    <div class="mt-4 flex justify-end">
+      <el-pagination background layout="total, sizes, prev, pager, next" :total="total" v-model:current-page="params.page" v-model:page-size="params.limit" :page-sizes="[10,20,50]" @change="fetchOrders" />
+    </div>
+    </div>
 
     <el-dialog v-model="dialogVisible" title="新建订单" width="500px">
       <el-form ref="createFormRef" :model="newOrder" :rules="formRules" label-width="100px">
@@ -64,7 +75,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="优先级" prop="priority"><el-select v-model="newOrder.priority"><el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" /></el-select></el-form-item>
-        <el-form-item label="交货日期"><el-date-picker v-model="newOrder.shipment_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:100%" /></el-form-item>
+        <el-form-item label="交付日期"><el-date-picker v-model="newOrder.shipment_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:100%" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="newOrder.notes" type="textarea" /></el-form-item>
       </el-form>
       <template #footer>
@@ -83,7 +94,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="优先级" prop="priority"><el-select v-model="editingOrder.priority"><el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" /></el-select></el-form-item>
-        <el-form-item label="交货日期"><el-date-picker v-model="editingOrder.shipment_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:100%" /></el-form-item>
+        <el-form-item label="交付日期"><el-date-picker v-model="editingOrder.shipment_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:100%" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="editingOrder.notes" type="textarea" /></el-form-item>
       </el-form>
       <template #footer>
@@ -96,9 +107,13 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
+import { useAuthStore } from '../stores/auth.js';
 
+const route = useRoute();
+const auth = useAuthStore();
 const orders = ref([]);
 const total = ref(0);
 const loading = ref(false);
@@ -123,7 +138,12 @@ const formRules = {
 };
 const sortMap = { descending: 'desc', ascending: 'asc' };
 
-onMounted(() => { fetchOrders(); fetchTemplates(); fetchCustomers(); });
+onMounted(() => { 
+  if (route.query.status) params.status = route.query.status;
+  fetchOrders(); 
+  fetchTemplates(); 
+  fetchCustomers(); 
+});
 async function fetchOrders() {
   loading.value = true;
   try { const r = await api.get('/orders', { params }); orders.value = r.data.data; total.value = r.data.total; }
@@ -142,8 +162,15 @@ async function createOrder() {
   const valid = await createFormRef.value?.validate().catch(() => false);
   if (!valid) return;
   creating.value = true;
-  try { await api.post('/orders', newOrder); dialogVisible.value = false; await fetchOrders(); ElMessage.success('创建成功'); }
-  catch (e) { ElMessage.error(e.response?.data?.error || '创建失败'); }
+  try {
+    const payload = { ...newOrder };
+    if (!payload.shipment_date) payload.shipment_date = null;
+    await api.post('/orders', payload);
+    dialogVisible.value = false;
+    await fetchOrders();
+    ElMessage.success('创建成功');
+  }
+  catch (e) { ElMessage.error(e.response?.data?.detail || e.response?.data?.error || '创建失败'); }
   finally { creating.value = false; }
 }
 
@@ -165,6 +192,7 @@ async function saveEdit() {
   saving.value = true;
   try {
     await api.put(`/orders/${editingOrder.id}`, {
+      order_no: editingOrder.order_no,
       product_name: editingOrder.product_name,
       customer_id: editingOrder.customer_id,
       priority: editingOrder.priority,

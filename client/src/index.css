@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-industrial-900 text-slate-200;
+  }
+}
+
+/* Custom dark mode settings for Element Plus to match our theme */
+html.dark {
+  --el-bg-color: #24283b;
+  --el-bg-color-overlay: #24283b;
+  --el-bg-color-page: #1a1b26;
+  --el-text-color-primary: #e2e8f0;
+  --el-text-color-regular: #cbd5e1;
+  --el-border-color: #3b4261;
+  --el-border-color-light: #414868;
+  --el-fill-color-blank: #24283b;
+  --el-color-primary: #7aa2f7;
+  --el-color-primary-light-9: rgba(122, 162, 247, 0.1);
+  --el-fill-color-light: rgba(255, 255, 255, 0.05);
+}

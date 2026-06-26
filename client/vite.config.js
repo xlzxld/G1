@@ -7,7 +7,16 @@ export default defineConfig({
     port: 5173,
     host: true,
     allowedHosts: ['4397z433o4.picp.vip'],
-    proxy: { '/api': 'http://localhost:3000' },
+    proxy: { 
+      '/api': { 
+        target: 'http://backend:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      } 
+    },
+    watch: {
+      usePolling: true,
+    }
   },
   build: {
     rollupOptions: {

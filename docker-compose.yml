@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: mes_user
+      POSTGRES_PASSWORD: mes_password
+      POSTGRES_DB: hotrunner_mes
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./server-python
+      dockerfile: Dockerfile
+    volumes:
+      - ./server-python:/app
+    ports:
+      - "8080:8000"
+    environment:
+      DATABASE_URL: postgresql://mes_user:mes_password@db:5432/hotrunner_mes
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8080
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

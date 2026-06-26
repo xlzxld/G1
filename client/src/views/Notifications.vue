@@ -1,9 +1,12 @@
 <template>
   <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2>通知中心</h2>
+    <div class="flex items-center justify-between mb-6">
       <div>
-        <el-button @click="sendVisible = true" type="primary"><el-icon><Promotion /></el-icon> 派发通知</el-button>
+        <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">通知中心</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">消息通知与自动化规则</p>
+      </div>
+      <div>
+        <el-button v-if="auth.canEdit('notifications')" @click="sendVisible = true" type="primary"><el-icon><Promotion /></el-icon> 派发通知</el-button>
         <el-button @click="markAllRead" v-if="unreadCount > 0">全部已读</el-button>
       </div>
     </div>
@@ -24,10 +27,10 @@
     <el-empty v-else description="暂无通知" />
 
     <el-dialog v-model="sendVisible" title="派发通知" width="440px">
-      <el-form label-width="70px">
-        <el-form-item label="接收人"><el-select v-model="sendTo" filterable placeholder="选择用户"><el-option v-for="u in users" :key="u.id" :label="`${u.display_name} (${u.username})`" :value="u.id" /></el-select></el-form-item>
-        <el-form-item label="标题"><el-input v-model="sendTitle" /></el-form-item>
-        <el-form-item label="内容"><el-input v-model="sendBody" type="textarea" /></el-form-item>
+      <el-form ref="sendFormRef" :model="form" :rules="rules" label-width="70px">
+        <el-form-item label="接收人" prop="to_user_id"><el-select v-model="form.to_user_id" filterable placeholder="选择用户"><el-option v-for="u in users" :key="u.id" :label="`${u.username}`" :value="u.id" /></el-select></el-form-item>
+        <el-form-item label="标题" prop="title"><el-input v-model="form.title" /></el-form-item>
+        <el-form-item label="内容"><el-input v-model="form.body" type="textarea" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="sendVisible=false">取消</el-button><el-button type="primary" @click="doSend" :loading="sending">发送</el-button></template>
     </el-dialog>
@@ -35,20 +38,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import api from '../api/index.js';
+import { useAuthStore } from '../stores/auth.js';
 
+const auth = useAuthStore();
 const notifs = ref([]); const unreadCount = ref(0); const users = ref([]);
-const sendVisible = ref(false); const sendTo = ref(null); const sendTitle = ref(''); const sendBody = ref(''); const sending = ref(false);
+const sendVisible = ref(false); const sending = ref(false);
+const sendFormRef = ref(null);
+const form = reactive({ to_user_id: null, title: '', body: '' });
+const rules = {
+  to_user_id: [{ required: true, message: '请选择接收人', trigger: 'change' }],
+  title: [{ required: true, message: '请输入标题', trigger: 'blur' }]
+};
 
 onMounted(async () => { await fetchNotifs(); try { users.value = (await api.get('/users')).data; } catch {} });
 async function fetchNotifs() { try { notifs.value = (await api.get('/notifications')).data; unreadCount.value = notifs.value.filter(n=>!n.is_read).length; } catch {} }
 async function markRead(id) { await api.put(`/notifications/${id}/read`); await fetchNotifs(); }
 async function markAllRead() { await api.put('/notifications/read-all'); await fetchNotifs(); ElMessage.success('全部已读'); }
 async function doSend() {
-  sending.value = true;
-  try { await api.post('/notifications', { to_user_id: sendTo.value, title: sendTitle.value, body: sendBody.value }); sendVisible.value = false; sendTo.value = null; sendTitle.value = ''; sendBody.value = ''; ElMessage.success('已发送'); }
-  catch (e) { ElMessage.error(e.response?.data?.error||'发送失败'); } finally { sending.value = false; }
+  if (!sendFormRef.value) return;
+  await sendFormRef.value.validate(async (valid) => {
+    if (!valid) return;
+    sending.value = true;
+    try { await api.post('/notifications', form); sendVisible.value = false; form.to_user_id = null; form.title = ''; form.body = ''; ElMessage.success('已发送'); }
+    catch (e) { ElMessage.error(e.response?.data?.error||e.response?.data?.detail||'发送失败'); } finally { sending.value = false; }
+  });
 }
 </script>

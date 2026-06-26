@@ -1,0 +1,93 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+from database import get_db
+import models, schemas
+
+router = APIRouter(prefix="/customers", tags=["customers"])
+
+@router.get("", response_model=List[schemas.CustomerResponse])
+def get_customers(db: Session = Depends(get_db), skip: int = 0, limit: int = 100, keyword: str = None):
+    query = db.query(models.Customer)
+    if keyword:
+        query = query.filter(models.Customer.name.ilike(f"%{keyword}%"))
+    customers = query.offset(skip).limit(limit).all()
+    return customers
+
+@router.post("", response_model=schemas.CustomerResponse)
+def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_db)):
+    if not customer.name or not customer.name.strip():
+        raise HTTPException(status_code=400, detail="Customer name cannot be empty")
+        
+    for m in (customer.contact_methods or []):
+        if not m.get('type') or not str(m.get('type')).strip():
+            raise HTTPException(status_code=400, detail="联系方式的类型不能为空")
+        if not m.get('value') or not str(m.get('value')).strip():
+            raise HTTPException(status_code=400, detail="联系方式的值不能为空")
+
+    db_customer = models.Customer(**customer.model_dump())
+    db.add(db_customer)
+    db.commit()
+    db.refresh(db_customer)
+    return db_customer
+
+@router.get("/{customer_id}", response_model=schemas.CustomerResponse)
+def get_customer(customer_id: int, db: Session = Depends(get_db)):
+    customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return customer
+
+@router.put("/{customer_id}", response_model=schemas.CustomerResponse)
+def update_customer(customer_id: int, customer: schemas.CustomerCreate, db: Session = Depends(get_db)):
+    db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not db_customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    if not customer.name or not customer.name.strip():
+        raise HTTPException(status_code=400, detail="Customer name cannot be empty")
+
+    for m in (customer.contact_methods or []):
+        if not m.get('type') or not str(m.get('type')).strip():
+            raise HTTPException(status_code=400, detail="联系方式的类型不能为空")
+        if not m.get('value') or not str(m.get('value')).strip():
+            raise HTTPException(status_code=400, detail="联系方式的值不能为空")
+
+    update_data = customer.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_customer, key, value)
+    
+    db.commit()
+    db.refresh(db_customer)
+    return db_customer
+
+@router.delete("/{customer_id}")
+def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+    db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not db_customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    db.delete(db_customer)
+    db.commit()
+    return {"ok": True}
+
+@router.get("/{customer_id}/orders", response_model=List[schemas.OrderResponse])
+def get_customer_orders(customer_id: int, db: Session = Depends(get_db)):
+    orders = db.query(models.Order).filter(models.Order.customer_id == customer_id).all()
+    return orders
+
+@router.get("/{customer_id}/stats")
+def get_customer_stats(customer_id: int, db: Session = Depends(get_db)):
+    total = db.query(models.Order).filter(models.Order.customer_id == customer_id).count()
+    completed = db.query(models.Order).filter(models.Order.customer_id == customer_id, models.Order.status == "completed").count()
+    in_progress = db.query(models.Order).filter(models.Order.customer_id == customer_id, models.Order.status.in_(["in_progress", "progress"])).count()
+    paused = db.query(models.Order).filter(models.Order.customer_id == customer_id, models.Order.status == "paused").count()
+    aborted = db.query(models.Order).filter(models.Order.customer_id == customer_id, models.Order.status == "terminated").count()
+    
+    return {
+        "total": total,
+        "completed": completed,
+        "in_progress": in_progress,
+        "paused": paused,
+        "aborted": aborted
+    }

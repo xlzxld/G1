@@ -1,13 +1,14 @@
 <template>
   <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2>用户管理</h2>
-      <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新建用户</el-button>
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">用户管理</h2>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">系统用户与权限分配</p>
+      </div>
+      <el-button v-if="auth.canEdit('users')" type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新建用户</el-button>
     </div>
     <el-table :data="users" border stripe v-loading="loading">
       <el-table-column prop="username" label="用户名" />
-      <el-table-column prop="display_name" label="显示名" />
-      <el-table-column prop="role_label" label="角色" />
       <el-table-column label="管理员" width="80">
         <template #default="{ row }">{{ row.is_admin ? '是' : '否' }}</template>
       </el-table-column>
@@ -18,19 +19,17 @@
       </el-table-column>
       <el-table-column label="操作" width="240">
         <template #default="{ row }">
-          <el-button size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button size="small" type="warning" @click="openPermissions(row)">权限</el-button>
-          <el-button size="small" type="danger" @click="confirmDelete(row)">删除</el-button>
+          <el-button v-if="auth.canEdit('users')" size="small" @click="openEdit(row)">编辑</el-button>
+          <el-button v-if="auth.canEdit('users')" size="small" type="warning" @click="openPermissions(row)">权限</el-button>
+          <el-button v-if="auth.canEdit('users')" size="small" type="danger" @click="confirmDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
 
     <el-dialog v-model="formVisible" :title="editing ? '编辑用户' : '新建用户'" width="440px">
-      <el-form :model="form" label-width="70px">
-        <el-form-item label="用户名"><el-input v-model="form.username" /></el-form-item>
-        <el-form-item label="显示名"><el-input v-model="form.display_name" /></el-form-item>
-        <el-form-item label="角色标签"><el-input v-model="form.role_label" placeholder="如：车间工人" /></el-form-item>
-        <el-form-item label="密码"><el-input v-model="form.password" type="password" :placeholder="editing ? '留空不修改' : '请输入密码'" /></el-form-item>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="70px">
+        <el-form-item label="用户名" prop="username"><el-input v-model="form.username" /></el-form-item>
+        <el-form-item label="密码" prop="password"><el-input v-model="form.password" type="password" :placeholder="editing ? '留空不修改' : '请输入密码'" /></el-form-item>
         <el-form-item label="管理员"><el-switch v-model="form.is_admin" /></el-form-item>
         <el-form-item label="启用"><el-switch v-model="form.is_active" /></el-form-item>
       </el-form>
@@ -80,7 +79,6 @@ const pages = [
   { key: 'customers', label: '客户管理' },
   { key: 'orders', label: '订单管理' },
   { key: 'process_flow', label: '工艺流程' },
-  { key: 'drawings', label: '图纸管理' },
   { key: 'inventory', label: '库存管理' },
   { key: 'users', label: '用户管理' },
   { key: 'notifications', label: '通知中心' },
@@ -96,7 +94,12 @@ const permVisible = ref(false);
 const editing = ref(null);
 const saving = ref(false);
 const permSaving = ref(false);
-const form = reactive({ username: '', display_name: '', role_label: '', password: '', is_admin: false, is_active: true });
+const formRef = ref(null);
+const form = reactive({ username: '', password: '', is_admin: false, is_active: true });
+const rules = reactive({
+  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  password: [{ required: true, message: '请输入初始密码', trigger: 'blur' }]
+});
 const permRows = ref([]);
 let permUserId = null;
 
@@ -104,27 +107,32 @@ onMounted(fetchUsers);
 
 async function fetchUsers() { loading.value = true; try { const r = await api.get('/users'); users.value = r.data; } catch {} finally { loading.value = false; } }
 
-function resetForm() { Object.assign(form, { username: '', display_name: '', role_label: '', password: '', is_admin: false, is_active: true }); }
+function resetForm() { Object.assign(form, { username: '', password: '', is_admin: false, is_active: true }); rules.password[0].required = true; }
 
 function openCreate() { resetForm(); editing.value = null; formVisible.value = true; }
 
-function openEdit(row) { editing.value = row; Object.assign(form, { username: row.username, display_name: row.display_name, role_label: row.role_label, password: '', is_admin: !!row.is_admin, is_active: !!row.is_active }); formVisible.value = true; }
+function openEdit(row) { editing.value = row; Object.assign(form, { username: row.username, password: '', is_admin: !!row.is_admin, is_active: !!row.is_active }); rules.password[0].required = false; formVisible.value = true; }
 
 async function saveUser() {
-  saving.value = true;
-  try {
-    if (editing.value) {
-      const body = { display_name: form.display_name, role_label: form.role_label, is_admin: form.is_admin, is_active: form.is_active, username: form.username };
-      if (form.password) body.password = form.password;
-      await api.put(`/users/${editing.value.id}`, body);
-    } else {
-      await api.post('/users', form);
-    }
-    formVisible.value = false;
-    await fetchUsers();
-    ElMessage.success('保存成功');
-  } catch (e) { ElMessage.error(e.response?.data?.error || '保存失败'); }
-  finally { saving.value = false; }
+  if (!formRef.value) return;
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return;
+    saving.value = true;
+    try {
+      if (editing.value) {
+        const body = { is_admin: form.is_admin, is_active: form.is_active, username: form.username, display_name: '', role_label: '' };
+        if (form.password) body.password = form.password;
+        await api.put(`/users/${editing.value.id}`, body);
+      } else {
+        const body = { ...form, display_name: '', role_label: '' };
+        await api.post('/users', body);
+      }
+      formVisible.value = false;
+      await fetchUsers();
+      ElMessage.success('保存成功');
+    } catch (e) { ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '保存失败'); }
+    finally { saving.value = false; }
+  });
 }
 
 async function confirmDelete(row) {

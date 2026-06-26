@@ -11,6 +11,18 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => user.value?.is_admin ?? false);
   const loggedIn = computed(() => !!user.value);
 
+  function canView(pageKey) {
+    if (isAdmin.value) return true;
+    const p = permissions.value.find(x => x.page_key === pageKey);
+    return p ? !!p.can_view : false;
+  }
+
+  function canEdit(pageKey) {
+    if (isAdmin.value) return true;
+    const p = permissions.value.find(x => x.page_key === pageKey);
+    return p ? !!p.can_edit : false;
+  }
+
   async function login(username, password) {
     const res = await api.post('/auth/login', { username, password });
     token.value = res.data.access_token;
@@ -49,5 +61,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('refresh_token');
   }
 
-  return { token, refreshToken: refreshTokenVal, user, permissions, isAdmin, loggedIn, login, fetchMe, refreshAccess, logout };
+  return { token, refreshToken: refreshTokenVal, user, permissions, isAdmin, loggedIn, login, fetchMe, refreshAccess, logout, canView, canEdit };
 });
