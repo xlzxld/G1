@@ -80,14 +80,12 @@ def get_customer_orders(customer_id: int, db: Session = Depends(get_db)):
 def get_customer_stats(customer_id: int, db: Session = Depends(get_db)):
     total = db.query(models.Order).filter(models.Order.customer_id == customer_id).count()
     completed = db.query(models.Order).filter(models.Order.customer_id == customer_id, models.Order.status == "completed").count()
-    in_progress = db.query(models.Order).filter(models.Order.customer_id == customer_id, models.Order.status.in_(["in_progress", "progress"])).count()
+    in_progress = db.query(models.Order).filter(models.Order.customer_id == customer_id, models.Order.status == "in_progress").count()
     paused = db.query(models.Order).filter(models.Order.customer_id == customer_id, models.Order.status == "paused").count()
-    aborted = db.query(models.Order).filter(models.Order.customer_id == customer_id, models.Order.status == "terminated").count()
     
     return {
         "total": total,
         "completed": completed,
         "in_progress": in_progress,
-        "paused": paused,
-        "aborted": aborted
+        "paused": paused
     }

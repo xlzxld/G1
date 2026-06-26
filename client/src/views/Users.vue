@@ -5,7 +5,7 @@
         <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">用户管理</h2>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">系统用户与权限分配</p>
       </div>
-      <el-button v-if="auth.canEdit('users')" type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新建用户</el-button>
+      <el-button v-if="auth.isAdmin" type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新建用户</el-button>
     </div>
     <el-table :data="users" border stripe v-loading="loading">
       <el-table-column prop="username" label="用户名" />
@@ -19,9 +19,9 @@
       </el-table-column>
       <el-table-column label="操作" width="240">
         <template #default="{ row }">
-          <el-button v-if="auth.canEdit('users')" size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="auth.canEdit('users')" size="small" type="warning" @click="openPermissions(row)">权限</el-button>
-          <el-button v-if="auth.canEdit('users')" size="small" type="danger" @click="confirmDelete(row)">删除</el-button>
+          <el-button v-if="auth.isAdmin" size="small" @click="openEdit(row)">编辑</el-button>
+          <el-button v-if="auth.isAdmin" size="small" type="warning" @click="openPermissions(row)">权限</el-button>
+          <el-button v-if="auth.isAdmin" size="small" type="danger" @click="confirmDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -44,12 +44,12 @@
         <el-table-column prop="label" label="页面" width="120" />
         <el-table-column label="可见" width="100" align="center">
           <template #default="{ row }">
-            <el-switch v-model="row.can_view" @change="onPermChange(row)" />
+            <el-switch v-model="row.can_view" :disabled="isSwitchDisabled(row)" @change="onPermChange(row)" />
           </template>
         </el-table-column>
         <el-table-column label="可编辑" width="100" align="center">
           <template #default="{ row }">
-            <el-switch v-model="row.can_edit" :disabled="!row.can_view" @change="onPermChange(row)" />
+            <el-switch v-model="row.can_edit" :disabled="!row.can_view || isSwitchDisabled(row)" @change="onPermChange(row)" />
           </template>
         </el-table-column>
         <el-table-column label="说明">
@@ -80,7 +80,6 @@ const pages = [
   { key: 'orders', label: '订单管理' },
   { key: 'process_flow', label: '工艺流程' },
   { key: 'inventory', label: '库存管理' },
-  { key: 'users', label: '用户管理' },
   { key: 'notifications', label: '通知中心' },
   { key: 'settings', label: '系统设置' },
   { key: 'outsourcing', label: '外协管理' },
@@ -101,7 +100,8 @@ const rules = reactive({
   password: [{ required: true, message: '请输入初始密码', trigger: 'blur' }]
 });
 const permRows = ref([]);
-let permUserId = null;
+const permUserId = ref(null);
+const permUser = ref(null);
 
 onMounted(fetchUsers);
 
@@ -141,12 +141,20 @@ async function confirmDelete(row) {
 }
 
 async function openPermissions(row) {
-  permUserId = row.id;
+  permUserId.value = row.id;
+  permUser.value = row;
   const r = await api.get(`/users/${row.id}/permissions`);
   const current = r.data;
   permRows.value = pages.map((p) => {
     const saved = current.find((c) => c.page_key === p.key);
-    return { page_key: p.key, label: p.label, can_view: saved?.can_view || false, can_edit: saved?.can_edit || false };
+    const defaultVal = row.is_admin === 1;
+    let canViewVal = saved !== undefined ? saved.can_view : defaultVal;
+    let canEditVal = saved !== undefined ? saved.can_edit : defaultVal;
+    if (row.is_admin === 1) {
+      canViewVal = true;
+      canEditVal = true;
+    }
+    return { page_key: p.key, label: p.label, can_view: canViewVal, can_edit: canEditVal };
   });
   permVisible.value = true;
 }
@@ -154,11 +162,14 @@ async function openPermissions(row) {
 function onPermChange(row) {
   if (!row.can_view) row.can_edit = false;
 }
+function isSwitchDisabled(row) {
+  return permUser.value?.is_admin === 1;
+}
 
 async function savePermissions() {
   permSaving.value = true;
   try {
-    await api.put(`/users/${permUserId}/permissions`, { permissions: permRows.value.map((r) => ({ page_key: r.page_key, can_view: r.can_view, can_edit: r.can_edit })) });
+    await api.put(`/users/${permUserId.value}/permissions`, { permissions: permRows.value.map((r) => ({ page_key: r.page_key, can_view: r.can_view, can_edit: r.can_edit })) });
     permVisible.value = false;
     ElMessage.success('权限已更新');
   } catch (e) { ElMessage.error(e.response?.data?.error || '保存失败'); }

@@ -51,15 +51,67 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('access_token', token.value);
   }
 
+  const notifications = ref([]);
+  const unreadNotifications = computed(() => notifications.value.filter(n => !n.is_read));
+  const unreadCount = computed(() => unreadNotifications.value.length);
+
+  async function fetchNotifications() {
+    if (!token.value) return;
+    try {
+      const res = await api.get('/notifications');
+      notifications.value = res.data;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function markNotificationRead(id) {
+    try {
+      await api.put(`/notifications/${id}/read`);
+      await fetchNotifications();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    try {
+      await api.put('/notifications/read-all');
+      await fetchNotifications();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   function logout() {
     api.post('/auth/logout', { refresh_token: refreshTokenVal.value }).catch(() => {});
     token.value = '';
     refreshTokenVal.value = '';
     user.value = null;
     permissions.value = [];
+    notifications.value = [];
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
   }
 
-  return { token, refreshToken: refreshTokenVal, user, permissions, isAdmin, loggedIn, login, fetchMe, refreshAccess, logout, canView, canEdit };
+  return { 
+    token, 
+    refreshToken: refreshTokenVal, 
+    user, 
+    permissions, 
+    isAdmin, 
+    loggedIn, 
+    login, 
+    fetchMe, 
+    refreshAccess, 
+    logout, 
+    canView, 
+    canEdit,
+    notifications,
+    unreadNotifications,
+    unreadCount,
+    fetchNotifications,
+    markNotificationRead,
+    markAllNotificationsRead
+  };
 });

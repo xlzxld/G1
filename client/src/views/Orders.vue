@@ -42,11 +42,11 @@
       <el-table-column prop="notes" label="备注" min-width="120">
         <template #default="{ row }"><span :title="row.notes">{{ row.notes ? (row.notes.length > 20 ? row.notes.slice(0,20)+'…' : row.notes) : '—' }}</span></template>
       </el-table-column>
-      <el-table-column prop="shipment_date" label="交付日期" sortable="custom" width="150">
-        <template #default="{ row }">{{ row.shipment_date?.slice(0,16).replace('T', ' ') || '—' }}</template>
+      <el-table-column prop="shipment_date" label="交付日期" sortable="custom" width="160">
+        <template #default="{ row }">{{ formatDateTime(row.shipment_date) }}</template>
       </el-table-column>
-      <el-table-column prop="created_at" label="创建时间" sortable="custom" width="150">
-        <template #default="{ row }">{{ row.created_at?.slice(0,16).replace('T', ' ') }}</template>
+      <el-table-column prop="created_at" label="创建时间" sortable="custom" width="160">
+        <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
       <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
@@ -211,11 +211,15 @@ async function confirmDelete(row) {
 }
 
 function statusLabel(s) {
-  const m = { draft: '草稿', in_progress: '进行中', progress: '进行中', completed: '已完成', paused: '暂停', terminated: '终止' };
+  const m = { in_progress: '进行中', completed: '已完成', paused: '暂停' };
   return m[s] || s;
 }
-function statusType(s) { if (s === 'completed') return 'success'; if (s === 'paused' || s === 'terminated') return 'danger'; if (s === 'in_progress' || s === 'progress') return 'warning'; return 'info'; }
+function statusType(s) { if (s === 'completed') return 'success'; if (s === 'paused') return 'danger'; if (s === 'in_progress') return 'warning'; return 'info'; }
 function prioType(p) { return p === 2 ? 'danger' : p === 1 ? 'warning' : 'info'; }
+function formatDateTime(val) {
+  if (!val) return '—';
+  return val.slice(0, 16).replace('T', ' ');
+}
 </script>
 
 <style scoped>

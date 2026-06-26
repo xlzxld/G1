@@ -24,8 +24,9 @@
         </template>
       </el-table-column>
       <el-table-column prop="address" label="地址" width="120" />
-      <el-table-column prop="created_at" label="创建时间" width="120">
-        <template #default="{ row }">{{ row.created_at?.slice(0,10) }}</template>
+      <el-table-column prop="notes" label="备注" min-width="150" show-overflow-tooltip />
+      <el-table-column prop="created_at" label="创建时间" width="160">
+        <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
       <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
@@ -97,4 +98,8 @@ async function save() {
   });
 }
 async function confirmDelete(row) { try { await ElMessageBox.confirm(`确定删除厂商 ${row.name}？`, '确认', { type: 'warning' }); await api.delete(`/vendors/${row.id}`); await fetchData(); ElMessage.success('已删除'); } catch {} }
+function formatDateTime(val) {
+  if (!val) return '—';
+  return val.slice(0, 16).replace('T', ' ');
+}
 </script>

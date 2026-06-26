@@ -9,8 +9,10 @@
           <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">实时生产进度与工程图纸管理</p>
         </div>
         <div class="flex gap-3">
-          <button v-if="isAdmin || auth.canEdit('orders')" @click="setOrderStatus('paused')" :disabled="order.status==='paused'||order.status==='terminated'||order.status==='completed'" class="px-4 py-2 bg-yellow-600/20 text-yellow-500 border border-yellow-600/50 rounded hover:bg-yellow-600/30 transition shadow-sm disabled:opacity-50">暂停生产</button>
-          <router-link to="/orders" class="px-4 py-2 bg-slate-100 dark:bg-industrial-800 text-slate-800 dark:text-slate-300 border border-slate-300 dark:border-industrial-border rounded hover:bg-slate-200 dark:hover:bg-industrial-700 transition shadow-sm">← 返回订单列表</router-link>
+          <button v-if="(isAdmin || auth.canEdit('orders')) && order.status === 'in_progress'" @click="setOrderStatus('paused')" class="px-4 py-2 bg-yellow-600/20 text-yellow-500 border border-yellow-600/50 rounded hover:bg-yellow-600/30 transition shadow-sm">暂停生产</button>
+          <button v-if="(isAdmin || auth.canEdit('orders')) && order.status === 'paused'" @click="setOrderStatus('in_progress')" class="px-4 py-2 bg-green-600/20 text-green-500 border border-green-600/50 rounded hover:bg-green-600/30 transition shadow-sm">恢复生产</button>
+          <router-link v-if="route.query.from_customer" :to="`/customers/${route.query.from_customer}`" class="px-4 py-2 bg-blue-50 dark:bg-industrial-800 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-industrial-border rounded hover:bg-blue-100 dark:hover:bg-industrial-700 transition shadow-sm">返回客户详情</router-link>
+          <router-link to="/orders" class="px-4 py-2 bg-slate-100 dark:bg-industrial-800 text-slate-800 dark:text-slate-300 border border-slate-300 dark:border-industrial-border rounded hover:bg-slate-200 dark:hover:bg-industrial-700 transition shadow-sm">返回订单列表</router-link>
         </div>
       </div>
 
@@ -140,7 +142,7 @@
                 </template>
               </el-table-column>
               <el-table-column prop="created_at" label="上传时间" width="160">
-                <template #default="{ row }">{{ row.created_at?.slice(0,16).replace('T', ' ') }}</template>
+                <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
               </el-table-column>
               <el-table-column label="操作" width="140" align="center">
                 <template #default="{ row }">
@@ -209,8 +211,8 @@ function stepBadgeText(s) {
 
 function statusBadge(s) {
   if (s === 'completed') return 'bg-industrial-accent/10 text-industrial-accent border-industrial-accent/50 shadow-[0_0_8px_rgba(56,189,248,0.3)]';
-  if (s === 'paused' || s === 'terminated') return 'bg-red-500/10 text-red-400 border-red-500/50';
-  if (s === 'in_progress' || s === 'progress') return 'bg-blue-500/10 text-blue-400 border-blue-500/50';
+  if (s === 'paused') return 'bg-red-500/10 text-red-400 border-red-500/50';
+  if (s === 'in_progress') return 'bg-blue-500/10 text-blue-400 border-blue-500/50';
   return 'bg-slate-700 text-slate-300 border-slate-600';
 }
 
@@ -221,13 +223,13 @@ function prioClass(p) {
 }
 
 function statusLabel(s) {
-  const m = { draft: '草稿', in_progress: '进行中', progress: '进行中', completed: '已完成', paused: '暂停', terminated: '终止' };
-  return m[s] || s.toUpperCase();
+  const m = { in_progress: '进行中', completed: '已完成', paused: '暂停' };
+  return m[s] || (s ? s.toUpperCase() : '');
 }
 
 function completionInfo(s) { 
-  if (s.completed_at) return `完成于：${s.completed_at.substring(0,16)}`; 
-  if (s.started_at) return `开始于：${s.started_at.substring(0,16)}`; 
+  if (s.completed_at) return `完成于：${formatDateTime(s.completed_at)}`; 
+  if (s.started_at) return `开始于：${formatDateTime(s.started_at)}`; 
   return ''; 
 }
 
@@ -248,7 +250,7 @@ async function doSkip(step) {
 }
 async function setOrderStatus(status) {
   try {
-    const statusText = status === 'paused' ? '暂停' : status === 'terminated' ? '终止' : '进行中';
+    const statusText = status === 'paused' ? '暂停' : '进行中';
     await ElMessageBox.confirm(`确定要将订单状态更改为 ${statusText} 吗？`, '确认', { type: 'warning' });
     await api.put(`/orders/${order.value.id}/status`, { status });
     await fetchOrder();
@@ -299,6 +301,10 @@ function previewDoc(doc) {
   } else {
     window.open(getDocUrl(doc), '_blank');
   }
+}
+function formatDateTime(val) {
+  if (!val) return '—';
+  return val.slice(0, 16).replace('T', ' ');
 }
 </script>
 

@@ -11,8 +11,8 @@ from sqlalchemy import or_, desc, asc
 @router.get("")
 def get_orders(
     db: Session = Depends(get_db), 
-    skip: int = 0, 
-    limit: int = 100,
+    page: int = 1, 
+    limit: int = 20,
     keyword: str = None,
     status: str = None,
     priority: str = None,
@@ -46,6 +46,7 @@ def get_orders(
         else:
             query = query.order_by(desc(column))
             
+    skip = (page - 1) * limit
     orders = query.offset(skip).limit(limit).all()
     results = []
     for order in orders:
@@ -255,8 +256,6 @@ def advance_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
             break
     if all_completed:
         order.status = 'completed'
-    elif order.status == 'draft':
-        order.status = 'in_progress'
 
     db.commit()
     return {"ok": True}

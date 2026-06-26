@@ -85,7 +85,7 @@ class OrderBase(BaseModel):
     order_no: str
     product_name: str
     priority: int = 0
-    status: str = "draft"
+    status: str = "in_progress"
     shipment_date: Optional[datetime] = None
     notes: Optional[str] = ""
 

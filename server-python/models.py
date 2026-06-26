@@ -58,7 +58,7 @@ class Order(Base):
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
     customer_name = Column(String, default="") # Kept for legacy/fallback
     priority = Column(Integer, default=0)
-    status = Column(String, default="draft")
+    status = Column(String, default="in_progress")
     current_step_id = Column(Integer, nullable=True)
     shipment_date = Column(DateTime, nullable=True)
     notes = Column(String, default="")

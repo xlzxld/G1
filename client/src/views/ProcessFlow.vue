@@ -10,7 +10,9 @@
     <el-table :data="flows" border stripe v-loading="loading" @row-click="selectFlow" highlight-current-row>
       <el-table-column prop="name" label="模板名称" />
       <el-table-column prop="description" label="描述" />
-      <el-table-column prop="updated_at" label="更新时间" width="180" />
+      <el-table-column prop="updated_at" label="更新时间" width="180">
+        <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
+      </el-table-column>
       <el-table-column label="操作" width="200">
         <template #default="{ row }">
           <el-button v-if="auth.canEdit('process_flow')" size="small" @click.stop="editFlow(row)">编辑</el-button>
@@ -157,5 +159,9 @@ async function saveSteps() {
     ElMessage.success('步骤已保存');
   } catch (e) { ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '保存失败'); }
   finally { savingSteps.value = false; }
+}
+function formatDateTime(val) {
+  if (!val) return '—';
+  return val.slice(0, 16).replace('T', ' ');
 }
 </script>

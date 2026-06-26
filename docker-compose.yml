@@ -22,7 +22,8 @@ services:
     ports:
       - "8080:8000"
     environment:
-      DATABASE_URL: postgresql://mes_user:mes_password@db:5432/hotrunner_mes
+      - DATABASE_URL=postgresql://mes_user:mes_password@db:5432/hotrunner_mes
+      - VITE_API_BASE_URL=http://192.168.5.33:8080
     depends_on:
       - db
     restart: unless-stopped
@@ -37,7 +38,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_BASE_URL=http://localhost:8080
+      - VITE_API_BASE_URL=http://192.168.5.33:8080
     depends_on:
       - backend
     restart: unless-stopped
