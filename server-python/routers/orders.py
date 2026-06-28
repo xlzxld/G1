@@ -108,7 +108,6 @@ def create_order(order: schemas.OrderCreate, db: Session = Depends(get_db)):
                     name=ts.name,
                     seq=ts.seq,
                     required=ts.required,
-                    can_parallel=ts.can_parallel,
                     outsourced=ts.outsourced,
                     assignee=ts.assignee,
                     completion_condition=ts.completion_condition,
@@ -208,7 +207,8 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
                 "id": d.id, "filename": d.filename, "original_name": d.original_name,
                 "category": d.category, "version": d.version, "status": d.status,
                 "file_path": d.file_path, "file_size": d.file_size, "mime_type": d.mime_type,
-                "title": d.title, "description": d.description, "created_at": d.created_at
+                "title": d.title, "description": d.description, "created_at": d.created_at,
+                "step_id": d.step_id
             } for d in order.documents
         ],
         "steps": []
@@ -221,7 +221,7 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
         order_dict["steps"] = [
             {
                 "id": s.id, "name": s.name, "seq": s.seq, "required": s.required,
-                "can_parallel": s.can_parallel, "outsourced": s.outsourced,
+                "outsourced": s.outsourced,
                 "assignee": s.assignee, "status": s.status, "completion_condition": s.completion_condition,
                 "started_at": s.started_at, "completed_at": s.completed_at
             } for s in steps
@@ -330,9 +330,9 @@ def advance_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Step not found")
         
     if step.completion_condition == 'photo':
-        doc_count = db.query(models.Document).filter(models.Document.order_id == order_id).count()
+        doc_count = db.query(models.Document).filter(models.Document.step_id == step_id).count()
         if doc_count == 0:
-            raise HTTPException(status_code=400, detail="必须上传照片或图纸才能完成此工序")
+            raise HTTPException(status_code=400, detail="必须为本工序上传实操/检验照片才能确认完成")
             
     from datetime import datetime
     step.status = 'completed'

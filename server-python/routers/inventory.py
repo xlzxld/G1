@@ -6,10 +6,10 @@ import models, schemas
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
-@router.get("", response_model=List[schemas.InventoryItemResponse])
+@router.get("")
 def get_inventory_items(
-    db: Session = Depends(get_db), 
-    skip: int = 0, 
+    db: Session = Depends(get_db),
+    page: int = 1,
     limit: int = 100,
     keyword: Optional[str] = Query(None, description="搜索关键词"),
     sort_by: Optional[str] = Query("created_at", description="排序字段"),
@@ -35,8 +35,14 @@ def get_inventory_items(
             query = query.order_by(desc(column))
     else:
         query = query.order_by(desc(models.InventoryItem.created_at))
-        
-    return query.offset(skip).limit(limit).all()
+
+    total = query.count()
+    # limit > 1000 视为一次性全量拉取（前端翻页定位时用），直接返回数组保持兼容
+    if limit > 1000:
+        return query.offset(0).limit(limit).all()
+    skip = (page - 1) * limit
+    data = query.offset(skip).limit(limit).all()
+    return {"data": data, "total": total}
 
 @router.get("/{item_id}", response_model=schemas.InventoryItemResponse)
 def get_inventory_item(item_id: int, db: Session = Depends(get_db)):

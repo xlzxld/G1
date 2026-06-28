@@ -10,7 +10,7 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 @router.get("", response_model=List[schemas.NotificationResponse])
 def get_notifications(db: Session = Depends(get_db), current_user: dict = Depends(read_users_me)):
-    return db.query(models.Notification).filter(models.Notification.to_user_id == current_user["id"]).order_by(models.Notification.created_at.desc()).limit(100).all()
+    return db.query(models.Notification).filter(models.Notification.to_user_id == current_user["id"]).order_by(models.Notification.created_at.desc()).limit(200).all()
 
 @router.put("/{notification_id}/read")
 def mark_read(notification_id: int, db: Session = Depends(get_db), current_user: dict = Depends(read_users_me)):

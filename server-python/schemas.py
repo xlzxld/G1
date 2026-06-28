@@ -66,6 +66,7 @@ class DocumentBase(BaseModel):
     mime_type: str = ""
     title: str = ""
     description: str = ""
+    step_id: Optional[int] = None
 
 class DocumentCreate(DocumentBase):
     order_id: int
@@ -126,8 +127,6 @@ class ProcessStepBase(BaseModel):
     name: str
     seq: int = 0
     required: int = 1
-    can_parallel: int = 0
-    depends_on_step_id: Optional[int] = None
     outsourced: int = 0
     vendor_id: Optional[int] = None
     cost: Optional[float] = None

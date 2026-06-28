@@ -143,6 +143,7 @@ async def upload_document(
     title: str = Form("", description="图纸标题（可选）"),
     description: str = Form("", description="说明（可选）"),
     category: str = Form("图纸", description="分类，默认为'图纸'"),
+    step_id: Optional[int] = Form(None, description="所属工序 ID"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_drawings_edit),
@@ -198,6 +199,7 @@ async def upload_document(
     # 7. 写入新版本记录
     db_doc = models.Document(
         order_id=order_id,
+        step_id=step_id,
         filename=stored_filename,
         original_name=original_name,
         category=category,

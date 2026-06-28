@@ -1,97 +1,77 @@
- # 系统架构
+# 系统架构
 
- ## 分层架构
+## 分层架构
 
- ```
- ┌──────────────────────────────────────────────┐
- │  浏览器 (Vue 3)                               │
- │  Vue Router → 页面组件 → Pinia Store → Axios  │
- └──────────────┬───────────────────────────────┘
-                │ HTTP (JSON + JWT)
- ┌──────────────▼───────────────────────────────┐
- │  Express 服务端                                │
- │  ┌──────────┐ ┌────────────┐ ┌───────────┐  │
- │  │ 中间件层  │ │  路由层     │ │  服务层   │  │
- │  │ auth     │ │ /api/auth/  │ │ process-  │  │
- │  │ perm     │ │ /api/orders │ │ Engine    │  │
- │  │ audit    │ │ /api/users  │ │           │  │
- │  └──────────┘ └────────────┘ └───────────┘  │
- │                      │                       │
- │       ┌──────────────▼──────────────┐        │
- │       │  Knex 查询构建器            │        │
- │       ├─────────────────────────────┤        │
- │       │  better-sqlite3             │        │
- │       │  SQLite (data/mes.db)       │        │
- │       └─────────────────────────────┘        │
- └──────────────────────────────────────────────┘
-                │ 文件系统
- ┌──────────────▼───────────────────────────────┐
- │  uploads/{订单号}/{分类}/{文件名}             │
- └──────────────────────────────────────────────┘
- ```
+本系统采用现代化的前后端分离架构，配合 Docker Compose 进行容器化编排部署：
 
- ## 前端架构
+```
+┌──────────────────────────────────────────────┐
+│  浏览器 (Vue 3 客户端)                        │
+│  Vue Router → 页面组件 → Pinia Store → Axios  │
+└──────────────┬───────────────────────────────┘
+               │ HTTP 请求 (带 Bearer JWT 令牌)
+               │ (通过 Vite 代理或局域网宿主机 IP 进行分发)
+┌──────────────▼───────────────────────────────┐
+│  FastAPI 服务端 (Python 容器)                  │
+│  ┌──────────┐ ┌────────────┐ ┌───────────┐   │
+│  │  依赖注入 │ │  路由层    │ │ 业务函数  │   │
+│  │  Depends │ │ /auth/     │ │   例如    │   │
+│  │ (Auth/DB)│ │ /orders/   │ │  库存扣减 │   │
+│  └──────────┘ └────────────┘ └───────────┘   │
+│                      │                       │
+│       ┌──────────────▼──────────────┐        │
+│       │  SQLAlchemy ORM             │        │
+│       ├─────────────────────────────┤        │
+│       │  psycopg2 数据库驱动        │        │
+│       │  PostgreSQL (db 容器)        │        │
+│       └─────────────────────────────┘        │
+└──────────────────────────────────────────────┘
+               │ 文件写入
+┌──────────────▼───────────────────────────────┐
+│  uploads/{订单号}/{工序分类}/{文件名}          │
+└──────────────────────────────────────────────┘
+```
 
- **框架:** Vue 3 (Composition API + `<script setup>`)
+## 前端架构
 
- **状态管理:** Pinia (`useAuthStore`) — 只用于认证状态。业务数据在各页面组件内通过 Axios 直接请求，无集中式业务 store。
+**框架技术:** Vue 3 (Composition API + `<script setup>`)  
+**状态管理:** Pinia (`useAuthStore`) — 仅用来管理用户登录状态、Token 缓存和个人权限矩阵。业务数据直接在各页面组件内通过 Axios 发起请求并进行局部状态存储，不设全局高密集业务 store。  
+**路由导航:** Vue Router，拥有 10+ 核心业务路由，采用路由懒加载技术。路由守卫 `beforeEach` 在每次页面跳转时，会阻断式进行 JWT Token 的有效性判断及对应页面的 `page_permissions` 权限位判断。  
+**UI 框架:** Element Plus，提供一套高度定制的深/浅色适配界面。  
+**请求客户端:** Axios 实例 (`client/src/api/index.js`)。前端拦截器会在每个请求发出前，自动在 Header 中追加 `Authorization: Bearer <token>` 凭证。同时响应拦截器会对 401 认证异常进行全局拦截。
 
- **路由:** Vue Router，14 个路由，懒加载页面组件。路由守卫 `beforeEach` 执行认证检查和权限检查。
+## 后端架构
 
- **UI 框架:** Element Plus，全局注册，所有图标全局注册供模板使用。
+**框架技术:** FastAPI (Python)  
+FastAPI 提供了出色的运行性能和自动化的参数校验功能。系统依据业务领域进行了模块化拆分，各模块路由定义在 `server-python/routers/` 目录下，并在 `server-python/main.py` 中集中进行挂载与跨域配置。
 
- **请求:** Axios 实例 (`/client/src/api/index.js`)，baseURL=`/api`，请求拦截器自动添加 Bearer token，响应拦截器自动处理 401 → refresh token → 重试。
+**核心设计模式 — 依赖注入 (Dependency Injection):**
+* **数据库会话管理**: 使用 `Depends(get_db)` 动态管理 SQLAlchemy `Session` 生命周期，确保每次 API 呼叫均能获得独立的连接，且在请求结束后自动关闭连接释放资源。
+* **认证与防卫**: 敏感接口直接挂载 `Depends(get_current_user)` 或 `Depends(verify_admin)` 依赖函数。FastAPI 会自动拦截请求头、校验 JWT 并解析出对应用户行，非合法访问会直接返回 `401 Unauthorized` 状态码。
 
- ## 后端架构
+**全局操作审计中间件:**  
+在 `main.py` 中挂载了 HTTP 中间件 `audit_log_middleware`，拦截所有 `POST`, `PUT`, `DELETE` 写入操作。中间件会自动解析 Authorization Header 以追踪操作人员姓名，并将操作对象及汉化后的操作事件详情记录写入 `audit_logs` 表，提供严密的生产追溯链路。
 
- **框架:** Express (纯路由，无控制器层抽象)
+## 数据持久层
 
- 每个业务模块一个路由文件，直接操作 Knex 查询。服务层仅在复杂逻辑处抽取（`processEngine.js`）。
+**数据库**: PostgreSQL (独立运行于 `db` 容器中)  
+**数据库驱动**: psycopg2 (支持高性能数据库连接与事务并发控制)  
+**ORM (对象关系映射)**: SQLAlchemy  
+* **结构同步**: 后端启动时，通过 `Base.metadata.create_all(bind=engine)` 自动扫描映射模型，确保在 PostgreSQL 中自动建立所需的全部数据表与索引约束，无需手动运行迁移脚本。
+* **并发防卫**: 涉及库存预留和物理扣减等并发操作时，SQLAlchemy 模型底层使用 `with_for_update()` 产生排他锁锁行，防止高并发下产生库存超卖或数据覆盖冲突。
 
- **中间件执行顺序:**
- 1. `cors()` — 跨域
- 2. `express.json({ limit: "50mb" })` — body 解析
- 3. 路由级: `authMiddleware` → `requirePermission(pageKey, action)` → 业务 handler
+## 静态文件与图纸存储
 
- **认证流程:**
-- 登录返回 access token (15min) + refresh token (7d)
-- 每个 API 请求携带 access token
-- 前端拦截器: 401 → 用 refresh token 换取新的 access token → 重试原请求
-- 登出时 refresh token 加入内存黑名单 (`refreshBlacklist` Set)
+车间实操作业上传的图纸、照片等文件直接保存在后端服务器所在的本地磁盘空间中：
+* **存储结构**: `uploads/{order_no}/{category}/v{timestamp}-{original_name}`。
+* **接口服务**: 后端通过 FastAPI 静态文件服务模块直接对外挂载访问路径：
+  ```python
+  app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+  ```
+  前端可直接通过 `VITE_API_BASE_URL/uploads/...` 路径下载或预览图片，支持带有中文文件名的 URL 编码解析。
 
- ## 数据层
+## 局域网接入共享设计
 
- **数据库:** SQLite 单文件 (`data/mes.db`)  
- **迁移:** Knex，启动时自动运行 `db.migrate.latest()`  
- **种子:** 如果 `users` 表为空，自动运行 `db.seed.run()`（创建演示数据）
-
- **外键:** 所有表间引用使用 SQL 外键约束，级联行为由 ON DELETE 子句定义（CASCADE / SET NULL）。SQLite 中通过 `PRAGMA foreign_keys = ON` 启用（better-sqlite3 默认开启）。
-
- ## 文件存储
-
- 图纸文件直接存储在服务器本地文件系统，目录结构:
-
- ```
- uploads/
-   2026001/
-     图纸/
-       v1737000000-drawing.png
-       v1737100000-drawing-v2.png
- ```
-
- 下载通过自定义 Express 路由 `/api/download/:order_no/:category/:filename` 处理，支持 URL 编码中文文件名。
-
- ## 技术选型理由
-
-- **Vue 3 + Element Plus:** 中文生态成熟，适合内部管理系统
-- **Express:** 轻量，路由即文档，无需 ORM 的黑盒抽象
-- **better-sqlite3:** 同步 API，零配置，单文件部署，适合车间场景
-- **Knex:** 迁移管理 + 查询构建，比原始 SQL 安全（参数化），比 ORM 透明
-- **JWT 双 token:** 短 access token 限制泄露窗口，长 refresh token 减少重复登录
-
-## 相关文档
-
-- [API 参考](reference-api.md) — 路由层完整接口文档
-- [数据库表结构](reference-database.md) — 数据模型定义
-- [权限模型](explanation-permission-model.md) — 中间件层的权限设计
-- [工序引擎](explanation-process-engine.md) — 服务层的核心业务逻辑
+为支持车间内的移动终端（平板、手机）共同协作，系统支持局域网接入：
+* **Vite 监听**: 前端 `vite.config.js` 配置 `host: true`，使开发服务器监听全部局域网网卡。
+* **容器网络桥接**: 在 Docker Compose 网络中，前端容器配置的 `VITE_API_BASE_URL` 会绑定宿主机的真实局域网 IP（例如 `http://192.168.5.33:8080`）。当移动设备接入局域网并访问前端时，浏览器渲染出的页面请求会被动态分发至该 IP 对应的后端容器，实现稳定的局域网协同。

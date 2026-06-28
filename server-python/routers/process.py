@@ -68,13 +68,14 @@ def update_process_steps(flow_id: int, payload: StepsUpdate, db: Session = Depen
     for s in payload.steps:
         if not s.get("name") or not s.get("name").strip():
             raise HTTPException(status_code=400, detail="工序名称不能为空")
+        if not s.get("assignee") or not s.get("assignee").strip():
+            raise HTTPException(status_code=400, detail="负责人不能为空")
             
         new_step = models.ProcessStep(
             flow_id=flow_id,
             name=s.get("name", ""),
             seq=s.get("seq", 0),
             required=1 if s.get("required") else 0,
-            can_parallel=1 if s.get("can_parallel") else 0,
             completion_condition=s.get("completion_condition", "manual"),
             assignee=s.get("assignee", "")
         )

@@ -1,97 +1,64 @@
- # 工序引擎
+# 工序引擎 (Process Flow Engine)
 
- ## 这是什么
+工序引擎是系统的核心业务逻辑，负责驱动生产订单在设定的工艺路线中按部就班流转。它解决了“当前这批热流道系统在车间该流转给哪个岗位？由谁来做？完工需要什么条件？如果发现质检不合格如何退回，库存又该如何随之发生改变？”这些生产现场的核心管理命题。
 
- 工序引擎是系统的核心业务逻辑，负责驱动订单在工艺流程中按步骤推进。它解决了"订单现在该谁做？下一步是什么？能不能跳过？出错了怎么退回？"这些车间管理的日常问题。
+## 线性工序状态机
 
- ## 步骤生命周期
+为保障车间现场操作工人能以最低的门槛进行人机交互，系统舍弃了复杂的并行工序分支与依赖网状逻辑，全面重构为**纯线性工序模型**。
 
- 每个工序步骤有 4 种状态:
-
- ```
- pending ──→ in_progress ──→ completed
-   │                             ↑ (可回退)
-   └─────────→ skipped ─────────┘
- ```
-
-- **pending:** 等待开始。步骤刚创建或被回退后的状态。
-- **in_progress:** 正在进行（实际通过 advance 直接标记为 completed，in_progress 是中间状态）。
-- **completed:** 已完成。
-- **skipped:** 已跳过（仅非必做步骤 `required=0` 可跳过）。
-
-## 步骤流转规则
-
-### 推进 (advanceStep)
-
-调用 `POST /api/orders/:id/steps/:stepId/advance` 触发。引擎执行以下操作:
-
-1. 将当前步骤状态设为 `completed`，记录完成时间和完成人
-2. 调用 `getNextSteps` 计算下一步
-3. 更新订单的 `status` 和 `current_step_id`
-
-**下一步计算逻辑 (`getNextSteps`):**
+工序步骤在生命周期中存在三种可能的状态：
 
 ```
-1. 获取所有步骤，按 seq 排序
-2. 筛选 pending 状态的步骤
-3. 再筛选: 依赖已满足的 (depends_on_step_id 指向已完成步骤，或无依赖)
-4. 如果当前没有正在进行的步骤 (in_progress):
-   → 所有 can_parallel=1 的 ready 步骤都变为下一步 (并行)
-5. 如果有正在进行的步骤:
-   → 只有 can_parallel=1 的步骤可以和它并行
-6. 如果所有步骤都完成了:
-   → 订单状态变为 completed
+     ┌───────────→ completed (已完工)
+     │                 ↑ (可回退)
+  pending ─────────────┘
+  (待加工) ───────────→ skipped (已跳过，仅限非必做工序)
 ```
 
-### 回退 (rollbackStep)
+1. **pending (待加工)**：工序步骤已随订单初始化，等待被指派的操作工启动并确认完成。
+2. **completed (已完工)**：工序已被确认完成。系统会记录操作人（通过 JWT 解析）以及精确到秒的完成时间。
+3. **skipped (已跳过)**：非必做工序（`required=0`）由于工艺调整，允许被操作工在系统跳过。
 
-只能回退 `completed` 或 `skipped` 状态的步骤。引擎:
+---
 
-1. 将步骤重置为 `pending` (清除完成信息)
-2. 确定回退目标:
-   - 如果被回退步骤是**并行步骤** (`can_parallel=1`)，回退到并行组开始之前
-   - 否则回退到 `seq - 1` 的步骤
-3. 更新订单状态为 `{前一步骤名}进行中` 或 `draft`
+## 核心推进逻辑与接口
 
-**并行回退场景:** 假设步骤 2 和 3 都是并行步骤 (`can_parallel=1`)，步骤 4 是非并行的。当回退步骤 4 时:
-- 引擎找到步骤 4 之前的最后一个非并行步骤（步骤 1）
-- 回退到步骤 1
-- 避免回到并行组中间导致状态混乱
+工序引擎的流转全部由后端 `server-python/routers/orders.py` 下的三个接口进行驱动：
 
-### 跳过 (skipStep)
+### 1. 推进工序完成 (Advance Step)
+* **接口**: `POST /api/orders/{order_id}/steps/{step_id}/advance`
+* **前置条件验证 (上传照片完成条件)**：
+  - 如果该步骤在模板中配置的完成条件为 `completion_condition == 'photo'`，系统会自动查询 `documents`（工程图纸表）中关联该 `step_id` 且状态为 active 的文件行数。
+  - 如果查询结果为 0，即证明操作工点击“完成工序”前没有拍照或上传图片，系统将抛出 `400 Bad Request` 异常（并给出提示：*必须为本工序上传实操/检验照片才能确认完成*）阻断流转。
+* **业务逻辑**：
+  - 校验通过后，更新步骤状态为 `completed`，并更新 `completed_at` 字段为服务器的当前 UTC 时间。
+  - 订单的 `current_step_id` 自动前进更新为该步骤的 ID。
+  - **完工结案判定**：系统会自动查询当前订单的工艺流程中是否还存在状态不为 `completed` 或 `skipped` 的步骤。如果全部步骤都已经走完，引擎会自动将订单的 `status` 变更为 `completed`，并立即触发**物理库存扣减流程 (`deduct_order_inventory`)**。
 
-只能跳过非必做步骤 (`required=0`)。引擎标记步骤为 `skipped`，然后调用 `getNextSteps` 计算下一个步骤。
+---
 
-## 工艺模板到订单
+### 2. 回退工序 (Rollback Step)
+* **接口**: `POST /api/orders/{order_id}/steps/{step_id}/rollback`
+* **业务逻辑**：
+  - 将该工序步骤的状态从 `completed` 重置回 `pending`，完成时间 `completed_at` 置为 `NULL`。
+  - 订单的状态重新由 `completed` 退回至 `in_progress` 状态。
+  - **库存联动逆向还原**：为防止车间工人误点完工导致库存被错误物理扣除，当触发工序回退使订单重回进行中时，引擎会自动执行逆向库存补偿——**撤减物理库房出库，并还原此订单所用零配件的“预留锁定状态”**，防止产生脏账。
 
-创建订单时如果指定了 `template_flow_id`，引擎执行 `copyFlowToOrder`:
+---
 
-1. 查找模板 (is_template=1)
-2. 创建新的流程实例 (is_template=0, order_id=订单ID)
-3. 逐步骤复制: 每个模板步骤创建一个新步骤实例 (status=pending)
-4. 映射 `depends_on_step_id`: 原步骤依赖的旧 ID 替换为新 ID
-5. 将第一个步骤设为当前步骤，订单状态更新为 `{第一步名}进行中`
+### 3. 跳过非必做工序 (Skip Step)
+* **接口**: `POST /api/orders/{order_id}/steps/{step_id}/skip`
+* **业务逻辑**：
+  - 检验当前工序在工艺模板中是否被定义为必做工序（`required == 1`）。如果为必做，则返回 400 错误拒绝跳过。
+  - 校验通过后，将工序状态更新为 `skipped`。
+  - 触发与“完成工序”相同的**订单完工结案判定**，若所有其他必做工序皆已完成，订单自动置为 `completed` 结案。
 
-流程实例是**独立的**——修改模板不会影响已有订单的流程实例。
+---
 
-## 订单删除
+## 模板向订单的实例化复制机制 (`copyFlowToOrder`)
 
-删除订单时，先删除关联的流程实例 (process_flows where order_id=...) —— 这会级联删除 process_steps (ON DELETE CASCADE)。然后再删除订单本身。
-
-## 状态值命名
-
-订单状态采用中文动态命名:
-
-- `draft` — 草稿（无流程或尚未开始）
-- `{步骤名}进行中` — 如 "设计进行中"、"加工进行中"
-- `completed` — 所有步骤完成
-- `paused` — 暂停（管理员手动设置）
-- `aborted` — 客户取消（管理员手动设置）
-
-`current_step_id` 总是指向当前正在进行的步骤（可能有多个，但只存一个 ID）。
-
-## 相关文档
-
-- [API 参考](reference-api.md) — orders 路由，advance/rollback/skip 接口
-- [创建工艺流程](howto-setup-workflow.md) — 如何定义步骤依赖和并行规则
-- [数据库表结构](reference-database.md) — process_flows、process_steps、orders 表
+创建订单时，如果填入了工艺模板 ID，系统会以数据库事务的形式执行实例化复制：
+1. 从 `process_flows` 中加载 `is_template=1` 的源工艺流程模板。
+2. 在 `process_flows` 中插入一条新记录作为该订单专属的流程实例（`is_template=0`，并将 `order_id` 设为当前订单 ID）。
+3. 循环将模板底下的所有工序步骤 (`process_steps`) 复制，写入该新流程实例下，初始状态均设为 `pending`。
+4. 订单的状态随之由 `draft` 改变为该工艺流程首个工序的 `"{第一工序步骤名}进行中"`。

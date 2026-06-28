@@ -10,8 +10,8 @@
         <el-button @click="markAllRead" v-if="unreadCount > 0">全部已读</el-button>
       </div>
     </div>
-    <el-timeline v-if="notifs.length">
-      <el-timeline-item v-for="n in notifs" :key="n.id" :color="n.is_read?'#c0c4cc':'#409eff'" :timestamp="formatDateTime(n.created_at)">
+    <el-timeline v-if="pagedNotifs.length">
+      <el-timeline-item v-for="n in pagedNotifs" :key="n.id" :color="n.is_read?'#c0c4cc':'#409eff'" :timestamp="formatDateTime(n.created_at)">
         <div 
           :id="`notif-item-${n.id}`"
           :class="['p-3 rounded-lg transition-all duration-300', highlightedId === n.id ? 'highlight-flash' : '']"
@@ -23,13 +23,24 @@
           </div>
           <p style="color:#909399;margin-top:4px">{{ n.body }}</p>
           <div style="margin-top:4px;display:flex;gap:8px">
-            <router-link v-if="n.link" :to="getFriendlyLink(n.link)" style="color:#409eff;font-size:13px">查看详情</router-link>
+            <a v-if="n.link" href="javascript:void(0)" style="color:#409eff;font-size:13px" @click="goToDetail(n)">查看详情</a>
             <el-button v-if="!n.is_read" size="small" text @click="markRead(n.id)">标为已读</el-button>
           </div>
         </div>
       </el-timeline-item>
     </el-timeline>
     <el-empty v-else description="暂无通知" />
+
+    <div v-if="notifs.length > pageSize" class="mt-4 flex justify-end">
+      <el-pagination
+        background
+        layout="total, prev, pager, next"
+        :total="notifs.length"
+        v-model:current-page="notifPage"
+        :page-size="pageSize"
+        @current-change="handleNotifPageChange"
+      />
+    </div>
 
     <el-dialog v-model="sendVisible" title="派发通知" width="440px">
       <el-form ref="sendFormRef" :model="form" :rules="rules" label-width="70px">
@@ -44,13 +55,14 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '../api/index.js';
 import { useAuthStore } from '../stores/auth.js';
 
 const auth = useAuthStore();
 const route = useRoute();
+const router = useRouter();
 const notifs = computed(() => auth.notifications);
 const unreadCount = computed(() => auth.unreadCount);
 const users = ref([]);
@@ -63,6 +75,30 @@ const rules = {
 };
 
 const highlightedId = ref(null);
+const notifPage = ref(1);
+const pageSize = 10;
+
+const pagedNotifs = computed(() => {
+  const start = (notifPage.value - 1) * pageSize;
+  return notifs.value.slice(start, start + pageSize);
+});
+
+// 根据通知 id 计算它在第几页
+function getPageOfNotif(id) {
+  const idx = notifs.value.findIndex(n => n.id === id);
+  if (idx === -1) return 1;
+  return Math.floor(idx / pageSize) + 1;
+}
+
+function handleNotifPageChange() {
+  // 翻页后若有 highlight，检查是否在当前页，若是则滚动
+  if (highlightedId.value) {
+    setTimeout(() => {
+      const el = document.getElementById(`notif-item-${highlightedId.value}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  }
+}
 
 onMounted(async () => {
   await fetchNotifs();
@@ -73,6 +109,7 @@ onMounted(async () => {
   if (route.query.highlight) {
     const id = parseInt(route.query.highlight);
     highlightedId.value = id;
+    notifPage.value = getPageOfNotif(id);
     setTimeout(() => {
       const el = document.getElementById(`notif-item-${id}`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -84,6 +121,7 @@ watch(() => route.query.highlight, (newVal) => {
   if (newVal) {
     const id = parseInt(newVal);
     highlightedId.value = id;
+    notifPage.value = getPageOfNotif(id);
     setTimeout(() => {
       const el = document.getElementById(`notif-item-${id}`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -117,6 +155,7 @@ function formatDateTime(val) {
   if (!val) return '—';
   return val.slice(0, 16).replace('T', ' ');
 }
+
 function getFriendlyLink(link) {
   if (!link) return '';
   // 兼容老数据：如果 link 为 /orders/123，自动转换为列表页高亮形式 /orders?highlight=123
@@ -125,6 +164,25 @@ function getFriendlyLink(link) {
     return `/orders?highlight=${orderMatch[1]}`;
   }
   return link;
+}
+
+async function goToDetail(n) {
+  // 先标已读，再跳转，确保目标页面接收到 highlight 参数时数据状态一致
+  if (!n.is_read) {
+    await markRead(n.id);
+  }
+  const target = getFriendlyLink(n.link);
+  if (!target) return;
+  // 解析目标路径与 query
+  const [path, queryStr] = target.split('?');
+  const query = {};
+  if (queryStr) {
+    queryStr.split('&').forEach(pair => {
+      const [k, v] = pair.split('=');
+      if (k) query[k] = v;
+    });
+  }
+  router.push({ path, query });
 }
 </script>
 

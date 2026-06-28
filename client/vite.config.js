@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    allowedHosts: ['4397z433o4.picp.vip'],
+    allowedHosts: true,
     proxy: { 
       '/api': { 
         target: 'http://backend:8000',
@@ -33,4 +33,4 @@ export default defineConfig({
       },
     },
   },
-});
+});// trigger restart

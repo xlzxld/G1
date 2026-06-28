@@ -5,12 +5,12 @@
         <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">客户管理</h2>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">客户与联系人管理</p>
       </div>
-      <el-button v-if="auth.canEdit('customers')" type="primary" @click="openCreate" color="#7aa2f7" dark><el-icon><Plus /></el-icon> 新建客户</el-button>
+      <el-button v-if="auth.canEdit('customers')" type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新建客户</el-button>
     </div>
 
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-md">
       <el-input v-model="keyword" placeholder="搜索客户" clearable style="width:240px" @keyup.enter="fetchData" />
-      <el-button type="primary" @click="fetchData" color="#7aa2f7" dark>搜索</el-button>
+      <el-button type="primary" @click="fetchData">搜索</el-button>
     </div>
     
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl overflow-hidden shadow-md p-4">
