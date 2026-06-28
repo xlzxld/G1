@@ -17,10 +17,10 @@
       </div>
 
       <!-- Bento Grid System -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         
         <!-- Left Column: Order Meta & Status (Span 1) -->
-        <div class="space-y-6 lg:col-span-1">
+        <div class="lg:col-span-1 flex flex-col space-y-6">
           <!-- Meta Info Card -->
           <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-5 shadow-lg backdrop-blur-sm relative overflow-hidden">
             <div class="absolute top-0 left-0 w-1 h-full bg-industrial-accent"></div>
@@ -56,6 +56,14 @@
               </div>
             </div>
           </div>
+
+          <!-- Materials Info Card (Left Bottom) -->
+          <OrderMaterials
+            v-if="order"
+            :order-id="order.id"
+            :order-status="order.status"
+            class="flex-1"
+          />
         </div>
 
         <!-- Middle & Right Column: Process Engine (Span 2) -->
@@ -70,20 +78,20 @@
             </div>
             
             <div class="flex-1 overflow-auto pr-2">
-              <div v-if="order.steps?.length" class="relative border-l-2 border-slate-200 dark:border-industrial-700 ml-3 space-y-6 pb-4">
-                <div v-for="(step, idx) in order.steps" :key="step.id" class="relative pl-6">
+              <div v-if="order.steps?.length" class="relative border-l-2 border-slate-200 dark:border-industrial-700 ml-4 space-y-8 pb-4">
+                <div v-for="(step, idx) in order.steps" :key="step.id" class="relative pl-8">
                   <!-- Timeline Node -->
-                  <div :class="nodeColor(step)" class="absolute -left-[9px] top-1 w-4 h-4 rounded-full border-2 border-industrial-800 z-10 transition-colors"></div>
+                  <div :class="nodeColor(step)" class="absolute -left-[9px] w-4 h-4 rounded-full border-2 border-industrial-800 z-10 transition-colors" style="top: 26px;"></div>
                   
-                  <div class="bg-slate-50 dark:bg-industrial-900/50 border border-slate-200 dark:border-industrial-700 rounded-lg p-4 hover:border-blue-400 dark:hover:border-industrial-accent transition-colors group">
+                  <div class="bg-slate-50 dark:bg-industrial-900/50 border border-slate-200 dark:border-industrial-700 rounded-xl p-5 hover:border-blue-400 dark:hover:border-industrial-accent transition-colors group shadow-sm">
                     <div class="flex justify-between items-start">
                       <div>
-                        <div class="flex items-center gap-3 mb-1">
-                          <span class="text-lg font-semibold text-slate-800 dark:text-slate-200 group-hover:text-blue-500 dark:group-hover:text-industrial-accent transition-colors">{{ idx + 1 }}. {{ step.name }}</span>
+                        <div class="flex items-center gap-3 mb-1.5">
+                          <span class="text-xl font-bold text-slate-800 dark:text-slate-200 group-hover:text-blue-500 dark:group-hover:text-industrial-accent transition-colors">{{ idx + 1 }}. {{ step.name }}</span>
                           <span v-if="step.required" class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-900/40 text-red-400 border border-red-800">必做</span>
                           <span v-if="step.outsourced" class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-900/40 text-indigo-400 border border-indigo-800">外协</span>
                         </div>
-                        <div class="text-xs text-slate-500 flex items-center gap-2">
+                        <div class="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2 font-medium">
                           <span>负责人: {{ step.assignee || '未分配' }}</span>
                           <span v-if="completionInfo(step)">• {{ completionInfo(step) }}</span>
                         </div>
@@ -91,12 +99,12 @@
                       
                       <!-- Action Panel for Active Step -->
                       <div v-if="canAct(step) && auth.canEdit('orders')" class="flex gap-2">
-                        <button v-if="step.status !== 'completed'" @click="doAdvance(step)" class="px-3 py-1 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold">完成</button>
-                        <button v-if="step.status === 'completed'" @click="doRollback(step)" class="px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/30 rounded hover:bg-red-500/20 transition text-xs">撤回</button>
-                        <button v-if="!step.required && step.status === 'pending'" @click="doSkip(step)" class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-200 dark:hover:bg-slate-600 transition text-xs">跳过</button>
+                        <button v-if="step.status !== 'completed'" @click="doAdvance(step)" class="px-4 py-2 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded-lg hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold shadow-sm">完成工序</button>
+                        <button v-if="step.status === 'completed'" @click="doRollback(step)" class="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/30 rounded-lg hover:bg-red-500/20 transition text-xs font-medium shadow-sm">撤回</button>
+                        <button v-if="!step.required && step.status === 'pending'" @click="doSkip(step)" class="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition text-xs font-medium shadow-sm">跳过</button>
                       </div>
                       <div v-else>
-                        <span :class="stepBadgeText(step)" class="text-xs font-bold uppercase">{{ step.status }}</span>
+                        <span :class="stepBadgeText(step)" class="text-xs font-bold uppercase tracking-wider">{{ step.status }}</span>
                       </div>
                     </div>
                   </div>
@@ -107,80 +115,38 @@
           </div>
         </div>
 
-        <!-- Bottom Full Width: Integrated Drawing Management -->
-        <div class="lg:col-span-3">
-          <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-5 shadow-lg">
-            <div class="flex justify-between items-center mb-6">
-              <h2 class="text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400 font-semibold flex items-center gap-2">
-                <el-icon><Picture /></el-icon>
-                工程图纸与附件
-              </h2>
-              <el-upload
-                action=""
-                :http-request="customUpload"
-                :show-file-list="false"
-                accept="image/*,.pdf,.zip,.rar"
-              >
-                <el-button v-if="auth.canEdit('orders')" type="primary" size="small"><el-icon><Upload /></el-icon> 上传图纸</el-button>
-              </el-upload>
-            </div>
+      </div>
 
-            <!-- Drawing Table -->
-            <el-table :data="order.documents" border stripe empty-text="暂无图纸附件">
-              <el-table-column prop="original_name" label="文件名" min-width="200">
-                <template #default="{ row }">
-                  <div class="flex items-center gap-2 cursor-pointer text-blue-500 hover:underline" @click="previewDoc(row)">
-                    <el-icon v-if="isImage(row.filename)"><PictureFilled /></el-icon>
-                    <el-icon v-else><Document /></el-icon>
-                    {{ row.title || row.original_name }}
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column prop="version" label="版本" width="80" align="center">
-                <template #default="{ row }">
-                  <el-tag size="small" type="info">v{{ row.version }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="created_at" label="上传时间" width="160">
-                <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="140" align="center">
-                <template #default="{ row }">
-                  <el-button size="small" @click="previewDoc(row)">查看</el-button>
-                  <a :href="getDocUrl(row)" target="_blank" download class="ml-2">
-                    <el-button size="small" type="success" plain>下载</el-button>
-                  </a>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </div>
-
+      <!-- Bottom Full Width: Drawing Panel Component (Moved outside of the grid to prevent layout overlapping) -->
+      <div class="mt-6">
+        <DrawingPanel
+          v-if="order"
+          :order-id="order.id"
+          :order-no="order.order_no"
+          :documents="order.documents || []"
+          @refresh="fetchOrder"
+        />
       </div>
     </div>
     
-    <!-- Image Preview Modal (Custom Implementation) -->
-    <div v-if="previewingDoc" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" @click="previewingDoc = null">
-      <img v-if="isImage(previewingDoc.filename)" :src="getDocUrl(previewingDoc)" class="max-w-full max-h-full object-contain border border-industrial-700 rounded" @click.stop />
-      <div class="absolute top-4 right-4 text-white text-xl cursor-pointer">&times;</div>
-    </div>
+    <!-- Image Preview Modal (legacy fullscreen, kept for order steps) -->
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useAuthStore } from '../stores/auth.js';
 import api from '../api/index.js';
+import DrawingPanel from '../components/DrawingPanel.vue';
+import OrderMaterials from '../components/OrderMaterials.vue';
 
 const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
-const order = ref(null); // Change to null to prevent premature render
+const order = ref(null);
 const isAdmin = auth.isAdmin;
-
-const fileInput = ref(null);
-const previewingDoc = ref(null);
 
 onMounted(fetchOrder);
 
@@ -192,6 +158,8 @@ async function fetchOrder() {
     if (!order.value.documents) order.value.documents = [];
   } catch (e) {
     console.error("Fetch failed", e);
+    ElMessage.error("该订单已不存在或已被删除！");
+    router.push('/orders');
   } 
 }
 
@@ -258,50 +226,6 @@ async function setOrderStatus(status) {
   } catch {}
 }
 
-// Drawing Integration Logic
-async function customUpload(options) {
-  const { file, onSuccess, onError } = options;
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('order_id', order.value.id);
-  formData.append('title', file.name.split('.')[0]); 
-  
-  try {
-    const res = await api.post('/documents', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-    ElMessage.success('上传成功');
-    onSuccess(res.data);
-    await fetchOrder();
-  } catch (e) {
-    ElMessage.error('上传失败');
-    onError(e);
-  }
-}
-
-function getDocUrl(doc) {
-  // Use the API URL from Vite env or fallback
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-  return `${baseUrl}/${doc.file_path}`;
-}
-
-function isImage(filename) {
-  if (!filename) return false;
-  return /\.(jpg|jpeg|png|gif|webp)$/i.test(filename);
-}
-
-function getExt(filename) {
-  if (!filename) return '';
-  return filename.split('.').pop().substring(0, 4);
-}
-
-function previewDoc(doc) {
-  if (isImage(doc.filename)) {
-    previewingDoc.value = doc;
-  } else {
-    window.open(getDocUrl(doc), '_blank');
-  }
-}
 function formatDateTime(val) {
   if (!val) return '—';
   return val.slice(0, 16).replace('T', ' ');

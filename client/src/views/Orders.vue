@@ -21,7 +21,7 @@
     </div>
     
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl overflow-hidden shadow-md p-4">
-    <el-table :data="orders" border stripe v-loading="loading" style="margin-top:12px" @sort-change="onSort" :default-sort="{prop:'created_at',order:'descending'}">
+    <el-table :data="orders" border stripe v-loading="loading" style="margin-top:12px" @sort-change="onSort" :default-sort="{prop:'created_at',order:'descending'}" :row-class-name="tableRowClassName">
       <el-table-column prop="order_no" label="订单号" sortable="custom" width="120">
         <template #default="{ row }"><router-link :to="`/orders/${row.id}`" style="color:#409eff">{{ row.order_no }}</router-link></template>
       </el-table-column>
@@ -56,7 +56,7 @@
       </el-table-column>
     </el-table>
     <div class="mt-4 flex justify-end">
-      <el-pagination background layout="total, sizes, prev, pager, next" :total="total" v-model:current-page="params.page" v-model:page-size="params.limit" :page-sizes="[10,20,50]" @change="fetchOrders" />
+      <el-pagination background layout="total, sizes, prev, pager, next" :total="total" v-model:current-page="params.page" v-model:page-size="params.limit" :page-sizes="[10,20,50]" @current-change="fetchOrders" @size-change="fetchOrders" />
     </div>
     </div>
 
@@ -106,7 +106,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, watch, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
@@ -138,23 +138,100 @@ const formRules = {
 };
 const sortMap = { descending: 'desc', ascending: 'asc' };
 
-onMounted(() => { 
+const highlightedId = ref(null);
+
+onMounted(async () => { 
   if (route.query.status) params.status = route.query.status;
+  
+  if (route.query.highlight) {
+    const targetId = parseInt(route.query.highlight);
+    highlightedId.value = targetId;
+    await locateOrderPage(targetId);
+  }
+  
   fetchOrders(); 
   fetchTemplates(); 
   fetchCustomers(); 
 });
+
+watch(() => route.query.highlight, async (newVal) => {
+  if (newVal) {
+    const targetId = parseInt(newVal);
+    highlightedId.value = targetId;
+    await locateOrderPage(targetId);
+    fetchOrders();
+  } else {
+    highlightedId.value = null;
+  }
+});
+
+async function locateOrderPage(targetId) {
+  try {
+    // 请求不分页的大列表计算定位
+    const tempParams = { ...params, page: 1, limit: 100000 };
+    const r = await api.get('/orders', { params: tempParams });
+    const allItems = r.data.data;
+    const idx = allItems.findIndex(x => x.id === targetId);
+    if (idx !== -1) {
+      const targetPage = Math.floor(idx / params.limit) + 1;
+      params.page = targetPage;
+    } else {
+      ElMessage.warning("该通知对应的订单不存在或已被删除！");
+      highlightedId.value = null;
+    }
+  } catch (e) {
+    console.error("Locate order page failed: ", e);
+  }
+}
+
 async function fetchOrders() {
   loading.value = true;
-  try { const r = await api.get('/orders', { params }); orders.value = r.data.data; total.value = r.data.total; }
+  try { 
+    const r = await api.get('/orders', { params }); 
+    orders.value = r.data.data; 
+    total.value = r.data.total; 
+    
+    if (highlightedId.value) {
+      await nextTick();
+      let attempts = 0;
+      const scrollInterval = setInterval(() => {
+        const el = document.querySelector('.highlight-flash-row');
+        attempts++;
+        if (el) {
+          clearInterval(scrollInterval);
+          setTimeout(() => {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 100);
+        } else if (attempts >= 20) {
+          clearInterval(scrollInterval);
+        }
+      }, 100);
+    }
+  }
   catch {} finally { loading.value = false; }
 }
+
 async function fetchTemplates() { try { const r = await api.get('/process-flows'); templates.value = r.data; } catch {} }
 async function fetchCustomers() { try { const r = await api.get('/customers'); customers.value = r.data; } catch {} }
 
-function search() { params.page = 1; fetchOrders(); }
-function reset() { Object.assign(params, { keyword: '', status: '', priority: '', page: 1 }); fetchOrders(); }
-function onSort({ prop, order }) { params.sort_by = prop; params.sort_order = sortMap[order] || 'desc'; params.page = 1; fetchOrders(); }
+function tableRowClassName({ row }) {
+  return row.id == highlightedId.value ? 'highlight-flash-row' : '';
+}
+
+function search() { highlightedId.value = null; params.page = 1; fetchOrders(); }
+function reset() { highlightedId.value = null; Object.assign(params, { keyword: '', status: '', priority: '', page: 1 }); fetchOrders(); }
+function onSort({ prop, order }) {
+  const newSortBy = prop || 'created_at';
+  const newSortOrder = sortMap[order] || 'desc';
+  if (params.sort_by === newSortBy && params.sort_order === newSortOrder) {
+    return;
+  }
+  if (highlightedId.value) highlightedId.value = null;
+  params.sort_by = newSortBy;
+  params.sort_order = newSortOrder;
+  params.page = 1;
+  fetchOrders();
+}
 
 function openCreate() { Object.assign(newOrder, { order_no: '', product_name: '', customer_id: null, template_flow_id: null, priority: 0, shipment_date: '', notes: '' }); dialogVisible.value = true; }
 
@@ -224,4 +301,21 @@ function formatDateTime(val) {
 
 <style scoped>
 .search-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0; }
+
+@keyframes row-flash {
+  0%, 100% {
+    background-color: transparent;
+  }
+  25%, 75% {
+    background-color: rgba(64, 158, 255, 0.25);
+  }
+}
+:deep(.el-table tbody tr.highlight-flash-row) {
+  --el-table-tr-bg-color: transparent !important;
+}
+:deep(.el-table tbody tr.highlight-flash-row td.el-table__cell) {
+  animation: row-flash 1.5s ease-in-out 3;
+  border-bottom: 2px solid rgba(64, 158, 255, 0.5) !important;
+  border-top: 2px solid rgba(64, 158, 255, 0.5) !important;
+}
 </style>

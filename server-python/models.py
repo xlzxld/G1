@@ -63,6 +63,7 @@ class Order(Base):
     shipment_date = Column(DateTime, nullable=True)
     notes = Column(String, default="")
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    inventory_deducted = Column(Integer, default=0) # 0=未扣减，1=已扣减
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

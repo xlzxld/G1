@@ -78,6 +78,7 @@ const pages = [
   { key: 'dashboard', label: '仪表台' },
   { key: 'customers', label: '客户管理' },
   { key: 'orders', label: '订单管理' },
+  { key: 'drawings', label: '图纸管理' },
   { key: 'process_flow', label: '工艺流程' },
   { key: 'inventory', label: '库存管理' },
   { key: 'notifications', label: '通知中心' },

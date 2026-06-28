@@ -50,10 +50,12 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
 import api from '../api/index.js';
 
 const route = useRoute();
+const router = useRouter();
 const customer = ref(null);
 const orderList = ref([]);
 const orderLoading = ref(false);
@@ -70,7 +72,14 @@ const parsedMethods = computed(() => {
 });
 
 onMounted(async () => {
-  try { const r = await api.get(`/customers/${route.params.id}`); customer.value = r.data; } catch {}
+  try { 
+    const r = await api.get(`/customers/${route.params.id}`); 
+    customer.value = r.data; 
+  } catch (e) {
+    ElMessage.error("该客户已不存在或已被删除！");
+    router.push('/customers');
+    return;
+  }
   orderLoading.value = true;
   try { orderList.value = (await api.get(`/customers/${route.params.id}/orders`)).data; } catch {} finally { orderLoading.value = false; }
   try { Object.assign(stats, (await api.get(`/customers/${route.params.id}/stats`)).data); } catch {}

@@ -47,7 +47,7 @@ def get_users(db: Session = Depends(get_db)):
 
 def grant_admin_permissions(user_id: int, db: Session):
     db.query(models.PagePermission).filter(models.PagePermission.user_id == user_id).delete()
-    pages = ['dashboard', 'customers', 'orders', 'process_flow', 'inventory', 'notifications', 'settings', 'outsourcing']
+    pages = ['dashboard', 'customers', 'orders', 'process_flow', 'inventory', 'notifications', 'settings', 'outsourcing', 'drawings']
     for page_key in pages:
         perm = models.PagePermission(
             user_id=user_id,

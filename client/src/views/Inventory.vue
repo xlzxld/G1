@@ -7,12 +7,38 @@
       </div>
       <el-button v-if="auth.canEdit('inventory')" type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新增物料</el-button>
     </div>
-    <el-table :data="items" border stripe v-loading="loading">
-      <el-table-column prop="name" label="名称" min-width="140" />
-      <el-table-column prop="spec" label="规格" width="120" />
-      <el-table-column label="总量" width="80" align="center"><template #default="{row}"><span :style="{color:row.total<=row.alert_threshold?'#f56c6c':''}">{{ row.total }}</span></template></el-table-column>
-      <el-table-column prop="reserved" label="已预留" width="80" align="center" />
-      <el-table-column label="可用" width="80" align="center"><template #default="{row}">{{ row.total - row.reserved }}</template></el-table-column>
+
+    <!-- 过滤工具栏 -->
+    <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-4 mb-6 flex justify-between items-center shadow-sm">
+      <div class="flex items-center gap-3">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索物料名称或规格"
+          clearable
+          style="width: 280px"
+          @clear="handleSearch"
+          @keyup.enter="handleSearch"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-button type="primary" @click="handleSearch">搜索</el-button>
+      </div>
+    </div>
+
+    <el-table :data="items" border stripe v-loading="loading" @sort-change="handleSortChange" :row-class-name="tableRowClassName">
+      <el-table-column prop="name" label="名称" min-width="140" sortable="custom" />
+      <el-table-column prop="spec" label="规格" width="120" sortable="custom" />
+      <el-table-column prop="total" label="总量" width="95" align="center" sortable="custom">
+        <template #default="{row}">
+          <span :style="{color:row.total<=row.alert_threshold?'#f56c6c':''}" :class="row.total<=row.alert_threshold?'font-bold':''">{{ row.total }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="reserved" label="已预留" width="95" align="center" sortable="custom" />
+      <el-table-column label="可用" width="90" align="center">
+        <template #default="{row}">{{ row.total - row.reserved }}</template>
+      </el-table-column>
       <el-table-column prop="unit" label="单位" width="60" />
       <el-table-column label="操作" width="240">
         <template #default="{row}">
@@ -46,11 +72,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, watch, nextTick } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
 import { useAuthStore } from '../stores/auth.js';
 
+const route = useRoute();
 const auth = useAuthStore();
 const items = ref([]); const loading = ref(false); const orders = ref([]);
 const formVisible = ref(false); const editing = ref(null); const saving = ref(false);
@@ -62,8 +90,88 @@ const rules = {
 };
 const reserveVisible = ref(false); const reserveItem = ref(null); const reserveOrderId = ref(null); const reserveQty = ref(1);
 
-onMounted(async () => { fetchItems(); try { orders.value = (await api.get('/orders')).data.data; } catch {} });
-async function fetchItems() { loading.value = true; try { items.value = (await api.get('/inventory')).data; } catch {} finally { loading.value = false; } }
+// 查询与排序状态
+const searchKeyword = ref('');
+const sortBy = ref('created_at');
+const sortOrder = ref('desc');
+
+const highlightedId = ref(null);
+
+onMounted(async () => { 
+  if (route.query.highlight) {
+    highlightedId.value = parseInt(route.query.highlight);
+  }
+  fetchItems(); 
+  try { orders.value = (await api.get('/orders')).data.data; } catch {} 
+});
+
+watch(() => route.query.highlight, (newVal) => {
+  if (newVal) {
+    highlightedId.value = parseInt(newVal);
+    fetchItems();
+  } else {
+    highlightedId.value = null;
+  }
+});
+
+async function fetchItems() { 
+  loading.value = true; 
+  try { 
+    const res = await api.get('/inventory', {
+      params: {
+        keyword: searchKeyword.value,
+        sort_by: sortBy.value,
+        sort_order: sortOrder.value
+      }
+    });
+    items.value = res.data; 
+    
+    if (highlightedId.value) {
+      const idx = items.value.findIndex(x => x.id === highlightedId.value);
+      if (idx !== -1) {
+        await nextTick();
+        let attempts = 0;
+        const scrollInterval = setInterval(() => {
+          const el = document.querySelector('.highlight-flash-row');
+          attempts++;
+          if (el) {
+            clearInterval(scrollInterval);
+            setTimeout(() => {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+          } else if (attempts >= 20) {
+            clearInterval(scrollInterval);
+          }
+        }, 100);
+      } else {
+        ElMessage.warning("该通知对应的物料不存在或已被删除！");
+        highlightedId.value = null;
+      }
+    }
+  } catch {} 
+  finally { loading.value = false; } 
+}
+
+function tableRowClassName({ row }) {
+  return row.id == highlightedId.value ? 'highlight-flash-row' : '';
+}
+
+function handleSearch() {
+  highlightedId.value = null;
+  fetchItems();
+}
+
+function handleSortChange({ prop, order }) {
+  const newSortBy = order ? prop : 'created_at';
+  const newSortOrder = order ? (order === 'ascending' ? 'asc' : 'desc') : 'desc';
+  if (sortBy.value === newSortBy && sortOrder.value === newSortOrder) {
+    return;
+  }
+  highlightedId.value = null;
+  sortBy.value = newSortBy;
+  sortOrder.value = newSortOrder;
+  fetchItems();
+}
 
 function openCreate() { editing.value = null; Object.assign(form, { name:'', spec:'', total:0, unit:'件', alert_threshold:5 }); formVisible.value = true; }
 function openEdit(row) { editing.value = row; Object.assign(form, { name:row.name, spec:row.spec, total:row.total, unit:row.unit, alert_threshold:row.alert_threshold }); formVisible.value = true; }
@@ -83,3 +191,22 @@ async function doReserve() {
   catch (e) { ElMessage.error(e.response?.data?.error||'预留失败'); }
 }
 </script>
+
+<style scoped>
+@keyframes row-flash {
+  0%, 100% {
+    background-color: transparent;
+  }
+  25%, 75% {
+    background-color: rgba(64, 158, 255, 0.25);
+  }
+}
+:deep(.el-table tbody tr.highlight-flash-row) {
+  --el-table-tr-bg-color: transparent !important;
+}
+:deep(.el-table tbody tr.highlight-flash-row td.el-table__cell) {
+  animation: row-flash 1.5s ease-in-out 3;
+  border-bottom: 2px solid rgba(64, 158, 255, 0.5) !important;
+  border-top: 2px solid rgba(64, 158, 255, 0.5) !important;
+}
+</style>

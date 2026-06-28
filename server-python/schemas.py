@@ -76,9 +76,22 @@ class DocumentResponse(DocumentBase):
     order_id: int
     uploaded_by: Optional[int]
     created_at: datetime
+    # 列表查询时可携带订单信息（可选）
+    order_no: Optional[str] = None
+    product_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+class DocumentUpdate(BaseModel):
+    """PUT /documents/{id} 元信息修改，所有字段均可选"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+class DocumentStatusUpdate(BaseModel):
+    """PUT /documents/{id}/status 专用状态变更"""
+    status: str
 
 # --- Order Schemas ---
 class OrderBase(BaseModel):

@@ -23,7 +23,7 @@
           </div>
           <p style="color:#909399;margin-top:4px">{{ n.body }}</p>
           <div style="margin-top:4px;display:flex;gap:8px">
-            <router-link v-if="n.link" :to="n.link" style="color:#409eff;font-size:13px">查看详情</router-link>
+            <router-link v-if="n.link" :to="getFriendlyLink(n.link)" style="color:#409eff;font-size:13px">查看详情</router-link>
             <el-button v-if="!n.is_read" size="small" text @click="markRead(n.id)">标为已读</el-button>
           </div>
         </div>
@@ -116,6 +116,15 @@ async function doSend() {
 function formatDateTime(val) {
   if (!val) return '—';
   return val.slice(0, 16).replace('T', ' ');
+}
+function getFriendlyLink(link) {
+  if (!link) return '';
+  // 兼容老数据：如果 link 为 /orders/123，自动转换为列表页高亮形式 /orders?highlight=123
+  const orderMatch = link.match(/^\/orders\/(\d+)$/);
+  if (orderMatch) {
+    return `/orders?highlight=${orderMatch[1]}`;
+  }
+  return link;
 }
 </script>
 

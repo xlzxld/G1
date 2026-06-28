@@ -49,8 +49,8 @@ const menuItems = [
   { path: '/inventory', label: '库存管理', icon: 'Box', page: 'inventory' },
   { path: '/users', label: '用户管理', icon: 'Avatar', page: 'users', requiresAdmin: true },
   { path: '/notifications', label: '通知中心', icon: 'Bell', page: 'notifications' },
-  { path: '/settings', label: '系统设置', icon: 'Setting', page: 'settings' },
   { path: '/outsourcing', label: '外协管理', icon: 'Van', page: 'outsourcing' },
+  { path: '/settings', label: '系统设置', icon: 'Setting', page: 'settings' },
 ];
 
 const visibleItems = computed(() =>
