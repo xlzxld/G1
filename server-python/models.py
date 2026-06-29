@@ -41,6 +41,7 @@ class Customer(Base):
     email = Column(String, default="")
     notes = Column(String, default="")
     contact_methods = Column(JSON, default=list) # Replaces individual contact fields
+    contacts = Column(JSON, default=list)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -192,6 +193,7 @@ class Vendor(Base):
     address = Column(String, default="")
     notes = Column(String, default="")
     contact_methods = Column(JSON, default=list)
+    contacts = Column(JSON, default=list)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

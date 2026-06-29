@@ -13,13 +13,29 @@
         <el-descriptions border :column="isMobile ? 1 : 3">
           <el-descriptions-item label="地址">{{ customer.address || '—' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatDateTime(customer.created_at) }}</el-descriptions-item>
-          
-          <el-descriptions-item v-for="(method, idx) in parsedMethods" :key="idx" :label="method.type">
-            {{ method.value || '—' }}
-          </el-descriptions-item>
-
           <el-descriptions-item label="备注" :span="isMobile ? 1 : 3">{{ customer.notes || '—' }}</el-descriptions-item>
         </el-descriptions>
+
+        <!-- 联系人列表区域 -->
+        <div class="mt-6 pt-6 border-t border-slate-100 dark:border-industrial-border">
+          <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+            联系人列表
+          </h4>
+          <div v-if="parsedContacts.length" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div v-for="(c, idx) in parsedContacts" :key="idx" class="border border-slate-200 dark:border-industrial-border rounded-xl p-4 bg-slate-50/50 dark:bg-industrial-900/30 hover:shadow-sm transition-all duration-200">
+              <div class="flex items-center justify-between border-b border-slate-200/60 dark:border-industrial-border/60 pb-2 mb-2">
+                <span class="font-bold text-slate-800 dark:text-slate-100">{{ c.name }}</span>
+                <el-tag v-if="c.role" size="small" type="primary">{{ c.role }}</el-tag>
+              </div>
+              <div class="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+                <p v-for="(m, mIdx) in c.contact_methods" :key="mIdx" class="flex items-center gap-1">
+                  <span class="text-slate-400">{{ m.type }}：</span>{{ m.value }}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-slate-400 text-xs italic">无结构化联系人数据</div>
+        </div>
       </div>
 
       <!-- Statistics Grid -->
@@ -205,6 +221,16 @@ const parsedMethods = computed(() => {
   if (!customer.value) return [];
   try {
     const raw = customer.value.contact_methods;
+    return typeof raw === 'string' ? JSON.parse(raw) : (raw || []);
+  } catch {
+    return [];
+  }
+});
+
+const parsedContacts = computed(() => {
+  if (!customer.value) return [];
+  try {
+    const raw = customer.value.contacts;
     return typeof raw === 'string' ? JSON.parse(raw) : (raw || []);
   } catch {
     return [];

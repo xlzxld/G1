@@ -30,6 +30,16 @@ class UserResponse(UserBase):
     class Config:
         from_attributes = True
 
+# --- Contact Schemas ---
+class ContactMethodSchema(BaseModel):
+    type: str
+    value: str
+
+class ContactSchema(BaseModel):
+    name: str
+    role: Optional[str] = ""
+    contact_methods: Optional[List[ContactMethodSchema]] = []
+
 # --- Customer Schemas ---
 class CustomerBase(BaseModel):
     name: str
@@ -40,6 +50,7 @@ class CustomerBase(BaseModel):
     email: Optional[str] = ""
     notes: Optional[str] = ""
     contact_methods: Optional[List[dict]] = []
+    contacts: Optional[List[ContactSchema]] = []
 
 class CustomerCreate(CustomerBase):
     pass
@@ -191,6 +202,7 @@ class VendorBase(BaseModel):
     address: Optional[str] = ""
     notes: Optional[str] = ""
     contact_methods: Optional[List[dict]] = []
+    contacts: Optional[List[ContactSchema]] = []
 
 class VendorCreate(VendorBase):
     pass

@@ -12,6 +12,8 @@ with engine.connect() as connection:
         connection.execute(text("ALTER TABLE process_steps DROP COLUMN IF EXISTS can_parallel;"))
         connection.execute(text("ALTER TABLE process_steps DROP COLUMN IF EXISTS depends_on_step_id;"))
         connection.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS step_id INTEGER REFERENCES process_steps(id) ON DELETE CASCADE;"))
+        connection.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS contacts JSON DEFAULT '[]';"))
+        connection.execute(text("ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contacts JSON DEFAULT '[]';"))
         connection.commit()
     except Exception as e:
         print(f"Error modifying database: {e}")

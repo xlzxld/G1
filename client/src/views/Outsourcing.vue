@@ -17,9 +17,21 @@
       <!-- 桌面端表格 -->
       <el-table v-if="!isMobile" :data="vendors" border stripe v-loading="loading" :row-class-name="tableRowClassName">
         <el-table-column prop="name" label="厂商名称" min-width="160" />
-        <el-table-column label="联系方式" min-width="200">
+        <el-table-column label="联系人列表" min-width="240">
           <template #default="{ row }">
-            <span v-for="(m, i) in parseMethods(row.contact_methods)" :key="i" style="margin-right:8px;">
+            <div v-if="parseContacts(row.contacts).length">
+              <div v-for="(c, i) in parseContacts(row.contacts)" :key="i" class="text-xs py-0.5 border-b border-slate-100 dark:border-industrial-border/60 last:border-b-0 pb-1.5 mb-1.5 last:pb-0 last:mb-0">
+                <span class="font-semibold text-slate-700 dark:text-slate-200">{{ c.name }}</span>
+                <span v-if="c.role" class="text-slate-400 dark:text-slate-500"> ({{ c.role }})</span>
+                <div class="flex flex-wrap gap-1 mt-0.5">
+                  <span v-for="(m, idx) in c.contact_methods" :key="idx" class="text-slate-500 dark:text-slate-400 mr-2 flex items-center">
+                    <el-tag size="small" type="info" class="scale-90 origin-left mr-0.5">{{ m.type }}</el-tag>
+                    <span>{{ m.value }}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <span v-else v-for="(m, i) in parseMethods(row.contact_methods)" :key="i" style="margin-right:8px;">
               <el-tag size="small" type="info">{{ m.type }}</el-tag> <span class="text-slate-500 dark:text-slate-300 ml-1">{{ m.value }}</span>
             </span>
           </template>
@@ -45,11 +57,22 @@
           :class="['rounded-xl border p-4 shadow-sm transition-all', row.id == highlightedId ? 'highlight-flash-card-active highlight-target-item' : 'border-slate-200 dark:border-industrial-border bg-slate-50 dark:bg-industrial-900/50']"
         >
           <p class="text-slate-800 dark:text-slate-100 font-semibold text-base mb-2">{{ row.name }}</p>
-          <div class="flex flex-wrap gap-1.5 mb-2">
-            <span v-for="(m, i) in parseMethods(row.contact_methods)" :key="i" class="flex items-center gap-1">
-              <el-tag size="small" type="info">{{ m.type }}</el-tag>
-              <span class="text-xs text-slate-500 dark:text-slate-400">{{ m.value }}</span>
-            </span>
+          <div class="space-y-1.5 mb-2">
+            <div v-if="parseContacts(row.contacts).length" v-for="(c, i) in parseContacts(row.contacts)" :key="i" class="text-xs border-b border-slate-200/50 dark:border-industrial-border/30 last:border-b-0 pb-1 last:pb-0">
+              <div class="flex items-center gap-1.5">
+                <span class="font-semibold text-slate-700 dark:text-slate-200">{{ c.name }}</span>
+                <el-tag v-if="c.role" size="small" type="info" class="scale-90 origin-left">{{ c.role }}</el-tag>
+              </div>
+              <div class="flex flex-wrap gap-1 mt-0.5 text-slate-500 dark:text-slate-400">
+                <span v-for="(m, idx) in c.contact_methods" :key="idx" class="mr-2">[{{ m.type }}] {{ m.value }}</span>
+              </div>
+            </div>
+            <div v-else class="flex flex-wrap gap-1.5">
+              <span v-for="(m, i) in parseMethods(row.contact_methods)" :key="i" class="flex items-center gap-1">
+                <el-tag size="small" type="info">{{ m.type }}</el-tag>
+                <span class="text-xs text-slate-500 dark:text-slate-400">{{ m.value }}</span>
+              </span>
+            </div>
           </div>
           <p v-if="row.address" class="text-xs text-slate-400 mb-1">地址：{{ row.address }}</p>
           <p v-if="row.notes" class="text-xs text-slate-400 mb-3">备注：{{ row.notes }}</p>
@@ -69,19 +92,38 @@
         <el-form-item label="名称" prop="name"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="地址"><el-input v-model="form.address" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="form.notes" type="textarea" /></el-form-item>
-        <el-divider content-position="left">联系方式 <span style="color:#f56c6c">*</span></el-divider>
-        <div v-for="(m, i) in form.contact_methods" :key="i" style="display:flex;gap:8px;margin-bottom:12px;align-items:start">
-          <el-form-item :prop="'contact_methods.' + i + '.type'" :rules="{ required: true, message: '类型必填', trigger: ['blur', 'change'] }">
-            <el-select v-model="m.type" style="width:120px" placeholder="类型" allow-create filterable>
-              <el-option v-for="t in contactTypes" :key="t" :value="t" :label="t" />
-            </el-select>
-          </el-form-item>
-          <el-form-item :prop="'contact_methods.' + i + '.value'" :rules="{ required: true, message: '值必填', trigger: 'blur' }" style="flex:1">
-            <el-input v-model="m.value" placeholder="值" />
-          </el-form-item>
-          <el-button :disabled="form.contact_methods.length <= 1" @click="form.contact_methods.splice(i,1)" type="danger" size="small" circle style="margin-top:2px;">×</el-button>
+        <el-divider content-position="left">联系人列表 <span style="color:#f56c6c">*</span></el-divider>
+        <div v-for="(c, i) in form.contacts" :key="i" class="border border-slate-200 dark:border-industrial-border rounded-xl p-4 mb-3 relative bg-slate-50/50 dark:bg-industrial-900/30">
+          <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+            <el-form-item label="姓名" :prop="'contacts.' + i + '.name'" :rules="{ required: true, message: '姓名必填', trigger: 'blur' }">
+              <el-input v-model="c.name" placeholder="联系人姓名" />
+            </el-form-item>
+            <el-form-item label="职务">
+              <el-input v-model="c.role" placeholder="职务/部门" />
+            </el-form-item>
+            
+            <!-- 联系人的联系方式动态列表 -->
+            <div class="col-span-2 border-t border-slate-100 dark:border-industrial-border/60 pt-3 mt-1">
+              <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">联系方式</span>
+              <div v-for="(m, idx) in c.contact_methods" :key="idx" class="flex gap-2 mt-2 items-start">
+                <el-form-item :prop="'contacts.' + i + '.contact_methods.' + idx + '.type'" :rules="{ required: true, message: '类型必填', trigger: ['blur', 'change'] }" class="mb-0">
+                  <el-select v-model="m.type" style="width:110px" placeholder="类型" allow-create filterable>
+                    <el-option v-for="t in contactTypes" :key="t" :value="t" :label="t" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item :prop="'contacts.' + i + '.contact_methods.' + idx + '.value'" :rules="{ required: true, message: '值必填', trigger: 'blur' }" class="mb-0 flex-1">
+                  <el-input v-model="m.value" placeholder="联系号码/账号" />
+                </el-form-item>
+                <el-button :disabled="c.contact_methods.length <= 1" @click="c.contact_methods.splice(idx,1)" type="danger" size="small" plain class="mt-1">删除</el-button>
+              </div>
+              <el-button size="small" type="primary" link class="mt-2" @click="c.contact_methods.push({type:'电话',value:''})">+ 添加联系方式</el-button>
+            </div>
+          </div>
+          <div class="mt-3 pt-3 border-t border-slate-100 dark:border-industrial-border/40 text-right">
+            <el-button :disabled="form.contacts.length <= 1" @click="form.contacts.splice(i,1)" type="danger" size="small" plain>删除该联系人</el-button>
+          </div>
         </div>
-        <el-button size="small" @click="form.contact_methods.push({type:'电话',value:''})">+ 添加联系方式</el-button>
+        <el-button type="dashed" class="w-full mt-1 mb-4" @click="form.contacts.push({name:'',role:'',contact_methods:[{type:'电话',value:''}]})">+ 添加联系人</el-button>
       </el-form>
       <template #footer>
         <el-button @click="formVisible = false">取消</el-button>
@@ -111,7 +153,7 @@ const vendors = ref([]); const loading = ref(false); const keyword = ref('');
 const formVisible = ref(false); const editing = ref(null); const saving = ref(false);
 const formRef = ref(null);
 const highlightedId = ref(null);
-const form = reactive({ name: '', address: '', notes: '', contact_methods: [{type:'电话',value:''}] });
+const form = reactive({ name: '', address: '', notes: '', contacts: [{name:'',role:'',contact_methods:[{type:'电话',value:''}]}] });
 const rules = { name: [{ required: true, message: '请输入厂商名称', trigger: 'blur' }] };
 const contactTypes = ['电话', '微信', 'QQ', '邮箱', '传真'];
 
@@ -170,15 +212,37 @@ function handleSearch() {
 }
 
 function parseMethods(raw) { try { return typeof raw === 'string' ? JSON.parse(raw) : (raw || []); } catch { return []; } }
-function openCreate() { editing.value = null; Object.assign(form, { name: '', address: '', notes: '', contact_methods: [{type:'电话',value:''}] }); formVisible.value = true; }
-function openEdit(row) { editing.value = row; Object.assign(form, { name: row.name, address: row.address, notes: row.notes, contact_methods: parseMethods(row.contact_methods) }); if (form.contact_methods.length === 0) form.contact_methods.push({type:'电话',value:''}); formVisible.value = true; }
+function parseContacts(raw) {
+  try {
+    const list = typeof raw === 'string' ? JSON.parse(raw) : (raw || []);
+    if (!Array.isArray(list)) return [];
+    return list.map(c => {
+      if (c && typeof c === 'object') {
+        if (!c.contact_methods || !Array.isArray(c.contact_methods)) {
+          const methods = [];
+          if (c.phone) methods.push({ type: '电话', value: c.phone });
+          if (c.wechat) methods.push({ type: '微信', value: c.wechat });
+          if (c.email) methods.push({ type: '邮箱', value: c.email });
+          c.contact_methods = methods;
+        }
+      } else {
+        return { name: String(c), role: '', contact_methods: [] };
+      }
+      return c;
+    });
+  } catch {
+    return [];
+  }
+}
+function openCreate() { editing.value = null; Object.assign(form, { name: '', address: '', notes: '', contacts: [{name:'',role:'',contact_methods:[{type:'电话',value:''}]}] }); formVisible.value = true; }
+function openEdit(row) { editing.value = row; Object.assign(form, { name: row.name, address: row.address, notes: row.notes, contacts: JSON.parse(JSON.stringify(parseContacts(row.contacts))) }); if (form.contacts.length === 0) form.contacts.push({name:'',role:'',contact_methods:[{type:'电话',value:''}]}); else { form.contacts.forEach(c => { if (!c.contact_methods) c.contact_methods = []; if (c.contact_methods.length === 0) c.contact_methods.push({type:'电话',value:''}); }); } formVisible.value = true; }
 async function save() {
   if (!formRef.value) return;
   await formRef.value.validate(async (valid) => {
     if (!valid) return;
     saving.value = true;
     try {
-      const body = { name: form.name, address: form.address, notes: form.notes, contact_methods: form.contact_methods.filter(m => m.value.trim()) };
+      const body = { name: form.name, address: form.address, notes: form.notes, contacts: form.contacts.filter(c => c.name.trim()) };
       if (editing.value) { await api.put(`/vendors/${editing.value.id}`, body); } else { await api.post('/vendors', body); }
       formVisible.value = false; await fetchData(); ElMessage.success('保存成功');
     } catch (e) { ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '保存失败'); }

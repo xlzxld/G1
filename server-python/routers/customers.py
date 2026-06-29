@@ -11,7 +11,7 @@ def get_customers(db: Session = Depends(get_db), skip: int = 0, limit: int = 100
     query = db.query(models.Customer)
     if keyword:
         query = query.filter(models.Customer.name.ilike(f"%{keyword}%"))
-    customers = query.offset(skip).limit(limit).all()
+    customers = query.order_by(models.Customer.name).offset(skip).limit(limit).all()
     return customers
 
 @router.post("", response_model=schemas.CustomerResponse)
@@ -25,7 +25,28 @@ def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_
         if not m.get('value') or not str(m.get('value')).strip():
             raise HTTPException(status_code=400, detail="联系方式的值不能为空")
 
+    for c in (customer.contacts or []):
+        if not c.name or not c.name.strip():
+            raise HTTPException(status_code=400, detail="联系人姓名不能为空")
+        for m in (c.contact_methods or []):
+            if not m.type or not m.type.strip():
+                raise HTTPException(status_code=400, detail="联系方式的类型不能为空")
+            if not m.value or not m.value.strip():
+                raise HTTPException(status_code=400, detail="联系方式的值不能为空")
+
     db_customer = models.Customer(**customer.model_dump())
+    if db_customer.contacts:
+        db_customer.contact = db_customer.contacts[0].get('name', '')
+        # Find the first phone value
+        methods = db_customer.contacts[0].get('contact_methods', [])
+        phone_val = ""
+        for m in methods:
+            if not phone_val:
+                phone_val = m.get('value', '')
+            if m.get('type') == '电话':
+                phone_val = m.get('value', '')
+                break
+        db_customer.phone = phone_val
     db.add(db_customer)
     db.commit()
     db.refresh(db_customer)
@@ -53,9 +74,31 @@ def update_customer(customer_id: int, customer: schemas.CustomerCreate, db: Sess
         if not m.get('value') or not str(m.get('value')).strip():
             raise HTTPException(status_code=400, detail="联系方式的值不能为空")
 
+    for c in (customer.contacts or []):
+        if not c.name or not c.name.strip():
+            raise HTTPException(status_code=400, detail="联系人姓名不能为空")
+        for m in (c.contact_methods or []):
+            if not m.type or not m.type.strip():
+                raise HTTPException(status_code=400, detail="联系方式的类型不能为空")
+            if not m.value or not m.value.strip():
+                raise HTTPException(status_code=400, detail="联系方式的值不能为空")
+
     update_data = customer.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_customer, key, value)
+    
+    if db_customer.contacts:
+        db_customer.contact = db_customer.contacts[0].get('name', '')
+        # Find the first phone value
+        methods = db_customer.contacts[0].get('contact_methods', [])
+        phone_val = ""
+        for m in methods:
+            if not phone_val:
+                phone_val = m.get('value', '')
+            if m.get('type') == '电话':
+                phone_val = m.get('value', '')
+                break
+        db_customer.phone = phone_val
     
     db.commit()
     db.refresh(db_customer)

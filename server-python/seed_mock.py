@@ -23,11 +23,126 @@ def seed_mock():
         # 1. Create Customers (5 items)
         print("Creating 5 customers...")
         customers_data = [
-            {"name": "比亚迪汽车有限公司", "contact": "王总", "phone": "13800000001", "address": "深圳市坪山区", "notes": "VIP核心客户，注重交期", "contact_methods": [{"type": "电话", "value": "13800000001"}, {"type": "微信", "value": "byd_procure"}]},
-            {"name": "特斯拉超级工厂(上海)", "contact": "马经理", "phone": "13900000002", "address": "上海市浦东新区", "notes": "外资大厂，流程严谨，图纸需版本受控", "contact_methods": [{"type": "邮箱", "value": "tesla_sh@tesla.com"}]},
-            {"name": "富士康精密组件(深圳)", "contact": "郭课长", "phone": "13700000003", "address": "深圳市龙华区", "notes": "起量迅速，主要针对电子类模具", "contact_methods": [{"type": "电话", "value": "13700000003"}]},
-            {"name": "格力电器股份有限公司", "contact": "董工", "phone": "13600000004", "address": "珠海市前山", "notes": "大尺寸面板热流道需求多", "contact_methods": [{"type": "微信", "value": "gree_dong"}]},
-            {"name": "华为终端有限公司", "contact": "余总", "phone": "13500000005", "address": "东莞市松山湖", "notes": "高精度热流道定制需求", "contact_methods": [{"type": "电话", "value": "13500000005"}]}
+            {
+                "name": "比亚迪汽车有限公司", 
+                "contact": "王总", 
+                "phone": "13800000001", 
+                "address": "深圳市坪山区", 
+                "notes": "VIP核心客户，注重交期", 
+                "contact_methods": [{"type": "电话", "value": "13800000001"}, {"type": "微信", "value": "byd_procure"}],
+                "contacts": [
+                    {
+                        "name": "王总", 
+                        "role": "采购总监", 
+                        "contact_methods": [{"type": "电话", "value": "13800000001"}, {"type": "微信", "value": "byd_procure"}, {"type": "邮箱", "value": "wang@byd.com"}]
+                    },
+                    {
+                        "name": "李工", 
+                        "role": "品质部模具工程师", 
+                        "contact_methods": [{"type": "电话", "value": "13800000099"}, {"type": "微信", "value": "byd_li"}, {"type": "邮箱", "value": "li_quality@byd.com"}]
+                    }
+                ]
+            },
+            {
+                "name": "特斯拉超级工厂(上海)", 
+                "contact": "马经理", 
+                "phone": "13900000002", 
+                "address": "上海市浦东新区", 
+                "notes": "外资大厂，流程严谨，图纸需版本受控", 
+                "contact_methods": [{"type": "邮箱", "value": "tesla_sh@tesla.com"}],
+                "contacts": [
+                    {
+                        "name": "马经理", 
+                        "role": "外协主管", 
+                        "contact_methods": [{"type": "电话", "value": "13900000002"}, {"type": "微信", "value": "tesla_ma"}, {"type": "邮箱", "value": "tesla_sh@tesla.com"}]
+                    },
+                    {
+                        "name": "张工", 
+                        "role": "设计验证工程师", 
+                        "contact_methods": [{"type": "电话", "value": "13900000088"}, {"type": "微信", "value": "tesla_zhang"}, {"type": "邮箱", "value": "zhang_ee@tesla.com"}]
+                    },
+                    {
+                        "name": "赵会计", 
+                        "role": "财务对账员", 
+                        "contact_methods": [{"type": "电话", "value": "13900000077"}, {"type": "邮箱", "value": "finance_sh@tesla.com"}]
+                    }
+                ]
+            },
+            {
+                "name": "富士康精密组件(深圳)", 
+                "contact": "郭课长", 
+                "phone": "13700000003", 
+                "address": "深圳市龙华区", 
+                "notes": "起量迅速，主要针对电子类模具", 
+                "contact_methods": [{"type": "电话", "value": "13700000003"}],
+                "contacts": [
+                    {
+                        "name": "郭课长", 
+                        "role": "采购负责人", 
+                        "contact_methods": [{"type": "电话", "value": "13700000003"}, {"type": "微信", "value": "foxconn_guo"}, {"type": "邮箱", "value": "guo@foxconn.com"}]
+                    },
+                    {
+                        "name": "陈工", 
+                        "role": "模具课技术指导", 
+                        "contact_methods": [{"type": "电话", "value": "13700000066"}, {"type": "微信", "value": "foxconn_chen"}]
+                    }
+                ]
+            },
+            {
+                "name": "格力电器股份有限公司", 
+                "contact": "董工", 
+                "phone": "13600000004", 
+                "address": "珠海市前山", 
+                "notes": "大尺寸面板热流道需求多", 
+                "contact_methods": [{"type": "微信", "value": "gree_dong"}],
+                "contacts": [
+                    {
+                        "name": "董工", 
+                        "role": "热流道研发经理", 
+                        "contact_methods": [{"type": "电话", "value": "13600000004"}, {"type": "微信", "value": "gree_dong"}, {"type": "邮箱", "value": "dong@gree.com"}]
+                    },
+                    {
+                        "name": "林工", 
+                        "role": "产品结构设计师", 
+                        "contact_methods": [{"type": "电话", "value": "13600000014"}, {"type": "微信", "value": "gree_lin"}]
+                    },
+                    {
+                        "name": "周工", 
+                        "role": "现场调试工程师", 
+                        "contact_methods": [{"type": "电话", "value": "13600000024"}]
+                    },
+                    {
+                        "name": "刘会计", 
+                        "role": "供应链财务经理", 
+                        "contact_methods": [{"type": "电话", "value": "13600000034"}, {"type": "微信", "value": "gree_liu"}, {"type": "邮箱", "value": "accounting@gree.com"}]
+                    }
+                ]
+            },
+            {
+                "name": "华为终端有限公司", 
+                "contact": "余总", 
+                "phone": "13500000005", 
+                "address": "东莞市松山湖", 
+                "notes": "高精度热流道定制需求", 
+                "contact_methods": [{"type": "电话", "value": "13500000005"}],
+                "contacts": [
+                    {
+                        "name": "余总", 
+                        "role": "结构采购总监", 
+                        "contact_methods": [{"type": "电话", "value": "13500000005"}, {"type": "微信", "value": "huawei_yu"}, {"type": "邮箱", "value": "yu@huawei.com"}]
+                    },
+                    {
+                        "name": "孙工", 
+                        "role": "工艺评审专家", 
+                        "contact_methods": [{"type": "电话", "value": "13500000015"}, {"type": "微信", "value": "huawei_sun"}, {"type": "邮箱", "value": "sun@huawei.com"}]
+                    },
+                    {
+                        "name": "钱助理", 
+                        "role": "采购助理", 
+                        "contact_methods": [{"type": "电话", "value": "13500000025"}]
+                    }
+                ]
+            }
         ]
         db_customers = []
         for c in customers_data:
@@ -142,9 +257,71 @@ def seed_mock():
         # 4. Create 3 Vendors (3 items)
         print("Creating 3 vendors...")
         vendors_data = [
-            {"name": "东莞市精雕机械外协厂", "contact": "张厂长", "phone": "13111112222", "address": "东莞市大岭山镇精雕工业园", "notes": "专注于深孔钻、CNC精密雕刻加工", "contact_methods": [{"type": "电话", "value": "13111112222"}]},
-            {"name": "深圳市博森热处理有限公司", "contact": "李工", "phone": "13222223333", "address": "深圳市宝安区沙井街道", "notes": "提供淬火、回火、真空热处理服务", "contact_methods": [{"type": "微信", "value": "bosen_heat"}]},
-            {"name": "惠州市恒泰表面处理厂", "contact": "陈经理", "phone": "13333334444", "address": "惠州市仲恺高新区", "notes": "电镀、防锈阳极氧化等表面工程", "contact_methods": [{"type": "电话", "value": "13333334444"}]}
+            {
+                "name": "东莞市精雕机械外协厂", 
+                "contact": "张厂长", 
+                "phone": "13111112222", 
+                "address": "东莞市大岭山镇精雕工业园", 
+                "notes": "专注于深孔钻、CNC精密雕刻加工", 
+                "contact_methods": [{"type": "电话", "value": "13111112222"}],
+                "contacts": [
+                    {
+                        "name": "张厂长", 
+                        "role": "总经理", 
+                        "contact_methods": [{"type": "电话", "value": "13111112222"}, {"type": "微信", "value": "jingdiao_zhang"}]
+                    },
+                    {
+                        "name": "刘组长", 
+                        "role": "CNC数控编程组长", 
+                        "contact_methods": [{"type": "电话", "value": "13111113333"}]
+                    }
+                ]
+            },
+            {
+                "name": "深圳市博森热处理有限公司", 
+                "contact": "李工", 
+                "phone": "13222223333", 
+                "address": "深圳市宝安区沙井街道", 
+                "notes": "提供淬火、回火、真空热处理服务", 
+                "contact_methods": [{"type": "微信", "value": "bosen_heat"}],
+                "contacts": [
+                    {
+                        "name": "李工", 
+                        "role": "热处理技术工程师", 
+                        "contact_methods": [{"type": "电话", "value": "13222223333"}, {"type": "微信", "value": "bosen_heat"}, {"type": "邮箱", "value": "heat@bosen.com"}]
+                    },
+                    {
+                        "name": "王经理", 
+                        "role": "销售代表", 
+                        "contact_methods": [{"type": "电话", "value": "13222224444"}]
+                    },
+                    {
+                        "name": "邓会计", 
+                        "role": "出纳", 
+                        "contact_methods": [{"type": "电话", "value": "13222225555"}]
+                    }
+                ]
+            },
+            {
+                "name": "惠州市恒泰表面处理厂", 
+                "contact": "陈经理", 
+                "phone": "13333334444", 
+                "address": "惠州市仲恺高新区", 
+                "notes": "电镀、防锈阳极氧化等表面工程", 
+                "contact_methods": [{"type": "电话", "value": "13333334444"}],
+                "contacts": [
+                    {
+                        "name": "陈经理", 
+                        "role": "外协业务负责人", 
+                        "contact_methods": [{"type": "电话", "value": "13333334444"}, {"type": "微信", "value": "hengtai_chen"}, {"type": "邮箱", "value": "chen@hengtai.com"}]
+                    },
+                    {
+                        "name": "黄工", 
+                        "role": "电镀车间主管", 
+                        "contact_methods": [{"type": "电话", "value": "13333335555"}]
+                    }
+                ]
+            }
         ]
         for vendor_data in vendors_data:
             vendor = models.Vendor(**vendor_data)
