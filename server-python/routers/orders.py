@@ -17,10 +17,13 @@ def get_orders(
     status: str = None,
     priority: str = None,
     sort_by: str = "created_at",
-    sort_order: str = "desc"
+    sort_order: str = "desc",
+    customer_id: int = None
 ):
     query = db.query(models.Order)
     
+    if customer_id:
+        query = query.filter(models.Order.customer_id == customer_id)
     if keyword:
         query = query.filter(
             or_(
@@ -497,3 +500,55 @@ def delete_order_material(order_id: int, reservation_id: int, db: Session = Depe
     db.commit()
     check_inventory_alert(res.item_id, db)
     return {"ok": True}
+
+@router.get("/{order_id}/locate")
+def locate_order_page(
+    order_id: int, 
+    db: Session = Depends(get_db),
+    limit: int = 20,
+    status: str = None,
+    priority: str = None,
+    keyword: str = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+    customer_id: int = None
+):
+    query = db.query(models.Order)
+    if customer_id:
+        query = query.filter(models.Order.customer_id == customer_id)
+    if keyword:
+        query = query.filter(
+            or_(
+                models.Order.order_no.ilike(f"%{keyword}%"),
+                models.Order.product_name.ilike(f"%{keyword}%"),
+                models.Order.customer_name.ilike(f"%{keyword}%")
+            )
+        )
+    if status:
+        query = query.filter(models.Order.status == status)
+    if priority is not None and priority != "":
+        try:
+            query = query.filter(models.Order.priority == int(priority))
+        except ValueError:
+            pass
+
+    target_order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not target_order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if sort_by and hasattr(models.Order, sort_by):
+        column = getattr(models.Order, sort_by)
+        if sort_order == 'asc':
+            query = query.order_by(asc(column))
+        else:
+            query = query.order_by(desc(column))
+    else:
+        query = query.order_by(desc(models.Order.created_at))
+
+    all_ids = [r[0] for r in query.with_entities(models.Order.id).all()]
+    try:
+        idx = all_ids.index(order_id)
+        page = (idx // limit) + 1
+        return {"page": page}
+    except ValueError:
+        return {"page": 1}

@@ -13,8 +13,6 @@ class TokenData(BaseModel):
 # --- User Schemas ---
 class UserBase(BaseModel):
     username: str
-    display_name: str
-    role_label: Optional[str] = ""
     is_admin: int = 0
     is_active: int = 1
 
@@ -258,7 +256,7 @@ class AuditLogResponse(AuditLogBase):
     id: int
     user_id: Optional[int]
     created_at: datetime
-    display_name: Optional[str] = ""
+    username: Optional[str] = ""
 
     class Config:
         from_attributes = True

@@ -23,6 +23,52 @@ export const useAuthStore = defineStore('auth', () => {
     return p ? !!p.can_edit : false;
   }
 
+  const notifications = ref([]);
+  const unreadNotifications = computed(() => notifications.value.filter(n => !n.is_read));
+  const unreadCount = computed(() => unreadNotifications.value.length);
+  const eventSource = ref(null);
+
+  function setupSSE() {
+    if (eventSource.value) {
+      eventSource.value.close();
+      eventSource.value = null;
+    }
+    if (!token.value) return;
+
+    const streamUrl = `/api/notifications/stream?token=${encodeURIComponent(token.value)}`;
+    const es = new EventSource(streamUrl);
+    
+    es.onmessage = (event) => {
+      if (event.data === 'refresh') {
+        fetchNotifications();
+      }
+    };
+    
+    es.onerror = () => {
+      // 浏览器 EventSource 在连接中断时会自动尝试重连，在此处只做警告提示
+      console.warn("SSE connection error or closed, EventSource will automatically retry in the background.");
+    };
+    
+    eventSource.value = es;
+  }
+
+  function closeSSE() {
+    if (eventSource.value) {
+      eventSource.value.close();
+      eventSource.value = null;
+    }
+  }
+
+  async function fetchNotifications() {
+    if (!token.value) return;
+    try {
+      const res = await api.get('/notifications');
+      notifications.value = res.data;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   async function login(username, password) {
     const res = await api.post('/auth/login', { username, password });
     token.value = res.data.access_token;
@@ -31,6 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('access_token', token.value);
     localStorage.setItem('refresh_token', refreshTokenVal.value);
     await fetchMe();
+    setupSSE();
   }
 
   async function fetchMe() {
@@ -43,26 +90,15 @@ export const useAuthStore = defineStore('auth', () => {
       is_admin: res.data.is_admin,
     };
     permissions.value = res.data.permissions || [];
+    // 刷新页面再次获取个人信息时，如果已登录，自动打开实时通知流
+    setupSSE();
   }
 
   async function refreshAccess() {
     const res = await api.post('/auth/refresh', { refresh_token: refreshTokenVal.value });
     token.value = res.data.access_token;
     localStorage.setItem('access_token', token.value);
-  }
-
-  const notifications = ref([]);
-  const unreadNotifications = computed(() => notifications.value.filter(n => !n.is_read));
-  const unreadCount = computed(() => unreadNotifications.value.length);
-
-  async function fetchNotifications() {
-    if (!token.value) return;
-    try {
-      const res = await api.get('/notifications');
-      notifications.value = res.data;
-    } catch (e) {
-      console.error(e);
-    }
+    setupSSE();
   }
 
   async function markNotificationRead(id) {
@@ -85,6 +121,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function logout() {
     api.post('/auth/logout', { refresh_token: refreshTokenVal.value }).catch(() => {});
+    closeSSE();
     token.value = '';
     refreshTokenVal.value = '';
     user.value = null;
@@ -112,6 +149,8 @@ export const useAuthStore = defineStore('auth', () => {
     unreadCount,
     fetchNotifications,
     markNotificationRead,
-    markAllNotificationsRead
+    markAllNotificationsRead,
+    setupSSE,
+    closeSSE
   };
 });

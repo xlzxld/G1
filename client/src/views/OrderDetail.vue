@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-slate-100 dark:bg-industrial-900 text-slate-800 dark:text-slate-200 p-6 font-sans">
+  <div class="min-h-screen bg-slate-100 dark:bg-industrial-900 text-slate-800 dark:text-slate-200 p-3 sm:p-6 font-sans">
     <div v-if="order" class="max-w-7xl mx-auto space-y-6">
       
       <!-- Top Header Area -->
@@ -78,31 +78,34 @@
             </div>
             
             <div class="flex-1 overflow-auto pr-2">
-              <div v-if="order.steps?.length" class="relative border-l-2 border-slate-200 dark:border-industrial-700 ml-4 space-y-8 pb-4">
+              <div v-if="order.steps?.length" class="relative border-l-2 border-slate-200 dark:border-industrial-700 ml-4 space-y-4 pb-4">
                 <div v-for="(step, idx) in order.steps" :key="step.id" class="relative pl-8">
-                  <!-- Timeline Node -->
-                  <div :class="nodeColor(step)" class="absolute -left-[9px] w-4 h-4 rounded-full border-2 border-industrial-800 z-10 transition-colors" style="top: 26px;"></div>
+                  <!-- Timeline Node (微调 top 位置，使之在卡片收缩后完美对齐第一行文本) -->
+                  <div :class="nodeColor(step)" class="absolute -left-[9px] w-4 h-4 rounded-full border-2 border-industrial-800 z-10 transition-colors" style="top: 18px;"></div>
                   
-                  <div class="bg-slate-50 dark:bg-industrial-900/50 border border-slate-200 dark:border-industrial-700 rounded-xl p-5 hover:border-blue-400 dark:hover:border-industrial-accent transition-colors group shadow-sm">
-                    <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
-                      <div>
-                        <div class="flex items-center gap-3 mb-1.5">
-                          <span class="text-xl font-bold text-slate-800 dark:text-slate-200 group-hover:text-blue-500 dark:group-hover:text-industrial-accent transition-colors">{{ idx + 1 }}. {{ step.name }}</span>
-                          <span v-if="step.required" class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-900/40 text-red-400 border border-red-800">必做</span>
-                          <span v-if="step.outsourced" class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-900/40 text-indigo-400 border border-indigo-800">外协</span>
-                          <span v-if="step.completion_condition === 'photo'" class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-900/40 text-blue-400 border border-blue-800 flex items-center gap-0.5"><el-icon><Picture /></el-icon>需传照</span>
+                  <div class="bg-slate-50 dark:bg-industrial-900/50 border border-slate-200 dark:border-industrial-700 rounded-xl p-3 sm:p-5 hover:border-blue-400 dark:hover:border-industrial-accent transition-colors group shadow-sm">
+                    <div class="flex flex-col sm:flex-row justify-between items-start gap-3 sm:items-center">
+                      <div class="w-full sm:w-auto">
+                        <div class="flex flex-wrap items-center gap-2 mb-1">
+                          <span class="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-200 group-hover:text-blue-500 dark:group-hover:text-industrial-accent transition-colors">{{ idx + 1 }}. {{ step.name }}</span>
+                          <div class="flex flex-wrap gap-1">
+                            <span v-if="step.required" class="px-1.5 py-0.5 rounded text-[8px] sm:text-[10px] font-bold bg-red-900/40 text-red-400 border border-red-800 shrink-0">必做</span>
+                            <span v-if="step.outsourced" class="px-1.5 py-0.5 rounded text-[8px] sm:text-[10px] font-bold bg-indigo-900/40 text-indigo-400 border border-indigo-800 shrink-0">外协</span>
+                            <span v-if="step.completion_condition === 'photo'" class="px-1.5 py-0.5 rounded text-[8px] sm:text-[10px] font-bold bg-blue-900/40 text-blue-400 border border-blue-800 flex items-center gap-0.5 shrink-0"><el-icon><Picture /></el-icon>需传照</span>
+                          </div>
                         </div>
-                        <div class="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2 font-medium">
+                        <div class="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 font-medium">
                           <span>负责人: {{ step.assignee || '未分配' }}</span>
-                          <span v-if="completionInfo(step)">• {{ completionInfo(step) }}</span>
+                          <span v-if="completionInfo(step)" class="hidden sm:inline">•</span>
+                          <span v-if="completionInfo(step)" class="text-slate-400 dark:text-slate-500">{{ completionInfo(step) }}</span>
                         </div>
 
                         <!-- 工序照片展示 -->
-                        <div v-if="getStepPhotos(step.id).length" class="mt-3 flex flex-wrap gap-2">
+                        <div v-if="getStepPhotos(step.id).length" class="mt-2.5 flex flex-wrap gap-2">
                           <div
                             v-for="photo in getStepPhotos(step.id)"
                             :key="photo.id"
-                            class="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 dark:border-industrial-700 bg-slate-100 dark:bg-industrial-900 cursor-pointer group/img"
+                            class="relative w-12 h-12 sm:w-16 sm:h-16 rounded-lg overflow-hidden border border-slate-200 dark:border-industrial-700 bg-slate-100 dark:bg-industrial-900 cursor-pointer group/img"
                             @click="viewPhoto(photo)"
                           >
                             <img :src="getDocUrl(photo)" class="w-full h-full object-cover" />
@@ -114,16 +117,16 @@
                       </div>
                       
                       <!-- Action Panel for Active Step -->
-                      <div v-if="canAct(step) && auth.canEdit('orders')" class="flex flex-wrap gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-                        <button v-if="step.status !== 'completed' && step.completion_condition !== 'photo'" @click="doAdvance(step)" class="min-h-[44px] sm:min-h-0 px-4 py-2 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded-lg hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold shadow-sm flex-1 sm:flex-none">完成工序</button>
-                        <button v-if="step.status !== 'completed' && step.completion_condition === 'photo'" @click="openPhotoUpload(step)" class="min-h-[44px] sm:min-h-0 px-4 py-2 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded-lg hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold shadow-sm flex items-center justify-center gap-1 flex-1 sm:flex-none">
+                      <div v-if="canAct(step) && auth.canEdit('orders')" class="flex gap-2 w-full sm:w-auto mt-1 sm:mt-0 justify-end">
+                        <button v-if="step.status !== 'completed' && step.completion_condition !== 'photo'" @click="doAdvance(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded-lg hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold shadow-sm flex-1 sm:flex-none">完成工序</button>
+                        <button v-if="step.status !== 'completed' && step.completion_condition === 'photo'" @click="openPhotoUpload(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded-lg hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold shadow-sm flex items-center justify-center gap-1 flex-1 sm:flex-none">
                           <el-icon><Picture /></el-icon>上传照片完成
                         </button>
-                        <button v-if="step.status === 'completed'" @click="doRollback(step)" class="min-h-[44px] sm:min-h-0 px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/30 rounded-lg hover:bg-red-500/20 transition text-xs font-medium shadow-sm flex-1 sm:flex-none">撤回</button>
-                        <button v-if="!step.required && step.status === 'pending'" @click="doSkip(step)" class="min-h-[44px] sm:min-h-0 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition text-xs font-medium shadow-sm flex-1 sm:flex-none">跳过</button>
+                        <button v-if="step.status === 'completed'" @click="doRollback(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-red-500/10 text-red-500 border border-red-500/30 rounded-lg hover:bg-red-500/20 transition text-xs font-medium shadow-sm flex-1 sm:flex-none">撤回</button>
+                        <button v-if="!step.required && step.status === 'pending'" @click="doSkip(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition text-xs font-medium shadow-sm flex-1 sm:flex-none">跳过</button>
                       </div>
-                      <div v-else>
-                        <span :class="stepBadgeText(step)" class="text-xs font-bold uppercase tracking-wider">{{ stepStatusLabel(step.status) }}</span>
+                      <div v-else class="text-right w-full sm:w-auto mt-1 sm:mt-0">
+                        <span :class="stepBadgeClass(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs font-bold uppercase tracking-wider inline-block shadow-sm">{{ stepStatusLabel(step.status) }}</span>
                       </div>
                     </div>
                   </div>
@@ -263,16 +266,18 @@ async function fetchOrder() {
 
 // Visual Helpers
 function nodeColor(s) { 
-  if (s.status === 'completed') return 'bg-blue-500 dark:bg-industrial-accent border-white dark:border-industrial-900 shadow-md dark:shadow-[0_0_10px_rgba(56,189,248,0.8)]'; 
-  if (s.status === 'in_progress') return 'bg-orange-400 dark:bg-blue-500 border-white dark:border-industrial-900 shadow-md dark:shadow-[0_0_10px_rgba(59,130,246,0.6)] animate-pulse'; 
-  if (s.status === 'skipped') return 'bg-slate-300 dark:bg-slate-600 border-white dark:border-slate-800'; 
-  return 'bg-slate-200 dark:bg-industrial-700 border-white dark:border-industrial-800'; 
+  if (s.status === 'completed') return 'bg-green-500 border-white dark:border-industrial-900 shadow-md dark:shadow-[0_0_12px_rgba(34,197,94,0.9)]'; 
+  if (s.status === 'in_progress') return 'bg-red-500 border-white dark:border-industrial-900 shadow-lg dark:shadow-[0_0_18px_rgba(244,63,94,0.95)] animate-pulse ring-2 ring-red-500/20'; 
+  if (s.status === 'skipped') return 'bg-green-300 dark:bg-green-800/80 border-white dark:border-slate-800'; 
+  // 未完成/未开始的工序：亮起鲜艳的红色灯，并在暗黑模式下呈现明显的光晕
+  return 'bg-red-600 dark:bg-red-500 border-white dark:border-industrial-900 shadow-md dark:shadow-[0_0_10px_rgba(239,68,68,0.85)]'; 
 }
 
-function stepBadgeText(s) {
-  if (s.status === 'completed') return 'text-blue-600 dark:text-industrial-accent';
-  if (s.status === 'skipped') return 'text-slate-400 dark:text-slate-500';
-  return 'text-slate-500 dark:text-slate-600';
+function stepBadgeClass(s) {
+  if (s.status === 'completed') return 'bg-blue-50 text-blue-600 border border-blue-200 dark:bg-industrial-accent/10 dark:text-industrial-accent dark:border-industrial-accent/50';
+  if (s.status === 'skipped') return 'bg-slate-50 text-slate-500 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
+  if (s.status === 'in_progress') return 'bg-orange-50 text-orange-600 border border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/50';
+  return 'bg-slate-100 text-slate-500 border border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600';
 }
 
 function statusBadge(s) {

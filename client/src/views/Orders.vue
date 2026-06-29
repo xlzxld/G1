@@ -9,72 +9,110 @@
     </div>
 
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-md">
-      <el-input v-model="params.keyword" placeholder="搜索订单号/产品/客户" clearable style="width:240px" @keyup.enter="search" />
-      <el-select v-model="params.status" placeholder="状态" clearable style="width:140px">
+      <el-input v-model="params.keyword" placeholder="搜索订单号/产品/客户" clearable class="w-full sm:w-60" @keyup.enter="search" />
+      <el-select v-model="params.status" placeholder="状态" clearable class="w-full sm:w-36">
         <el-option label="进行中" value="in_progress" /><el-option label="已完成" value="completed" /><el-option label="暂停" value="paused" />
       </el-select>
-      <el-select v-model="params.priority" placeholder="优先级" clearable style="width:120px">
+      <el-select v-model="params.priority" placeholder="优先级" clearable class="w-full sm:w-28">
         <el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" />
       </el-select>
-      <el-button type="primary" @click="search">搜索</el-button>
-      <el-button @click="reset" plain>重置</el-button>
+      <div class="flex gap-2 w-full sm:w-auto">
+        <el-button type="primary" @click="search" class="flex-1 sm:flex-none">搜索</el-button>
+        <el-button @click="reset" plain class="flex-1 sm:flex-none">重置</el-button>
+      </div>
     </div>
     
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl overflow-hidden shadow-md p-4">
-    <el-table :data="orders" border stripe v-loading="loading" style="margin-top:12px" @sort-change="onSort" :default-sort="{prop:'created_at',order:'descending'}" :row-class-name="tableRowClassName">
-      <el-table-column prop="order_no" label="订单号" sortable="custom" width="120">
-        <template #default="{ row }"><router-link :to="`/orders/${row.id}`" style="color:#409eff">{{ row.order_no }}</router-link></template>
-      </el-table-column>
-      <el-table-column prop="product_name" label="产品名称" sortable="custom" min-width="140" />
-      <el-table-column label="客户" sortable="custom" width="120">
-        <template #default="{ row }">
-          <router-link v-if="row.customer_id" :to="`/customers/${row.customer_id}`" style="color:#409eff">{{ row.customer_name }}</router-link>
-          <span v-else>{{ row.customer_name || '—' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="current_step_name" label="当前工序" width="120" />
-      <el-table-column label="状态" width="120">
-        <template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag></template>
-      </el-table-column>
-      <el-table-column label="优先级" width="80" align="center">
-        <template #default="{ row }"><el-tag :type="prioType(row.priority)" size="small">{{ ['普通','紧急','特急'][row.priority] || '普通' }}</el-tag></template>
-      </el-table-column>
-      <el-table-column prop="notes" label="备注" min-width="120">
-        <template #default="{ row }"><span :title="row.notes">{{ row.notes ? (row.notes.length > 20 ? row.notes.slice(0,20)+'…' : row.notes) : '—' }}</span></template>
-      </el-table-column>
-      <el-table-column prop="shipment_date" label="交付日期" sortable="custom" width="160">
-        <template #default="{ row }">{{ formatDateTime(row.shipment_date) }}</template>
-      </el-table-column>
-      <el-table-column prop="created_at" label="创建时间" sortable="custom" width="160">
-        <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
-        <template #default="{ row }">
-          <el-button v-if="auth.canEdit('orders')" size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="auth.canEdit('orders')" size="small" type="danger" @click="confirmDelete(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <div class="mt-4 flex justify-end">
-      <el-pagination background layout="total, sizes, prev, pager, next" :total="total" v-model:current-page="params.page" v-model:page-size="params.limit" :page-sizes="[10,20,50]" @current-change="fetchOrders" @size-change="fetchOrders" />
-    </div>
+
+      <!-- 桌面端表格 -->
+      <el-table v-if="!isMobile" :data="orders" border stripe v-loading="loading" style="margin-top:12px" @sort-change="onSort" :default-sort="{prop:'created_at',order:'descending'}" :row-class-name="tableRowClassName">
+        <el-table-column prop="order_no" label="订单号" sortable="custom" width="120">
+          <template #default="{ row }"><router-link :to="`/orders/${row.id}`" style="color:#409eff">{{ row.order_no }}</router-link></template>
+        </el-table-column>
+        <el-table-column prop="product_name" label="产品名称" sortable="custom" min-width="140" />
+        <el-table-column label="客户" sortable="custom" width="120">
+          <template #default="{ row }">
+            <router-link v-if="row.customer_id" :to="`/customers/${row.customer_id}`" style="color:#409eff">{{ row.customer_name }}</router-link>
+            <span v-else>{{ row.customer_name || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="current_step_name" label="当前工序" width="120" />
+        <el-table-column label="状态" width="120">
+          <template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag></template>
+        </el-table-column>
+        <el-table-column label="优先级" width="80" align="center">
+          <template #default="{ row }"><el-tag :type="prioType(row.priority)" size="small">{{ ['普通','紧急','特急'][row.priority] || '普通' }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="notes" label="备注" min-width="120">
+          <template #default="{ row }"><span :title="row.notes">{{ row.notes ? (row.notes.length > 20 ? row.notes.slice(0,20)+'…' : row.notes) : '—' }}</span></template>
+        </el-table-column>
+        <el-table-column prop="shipment_date" label="交付日期" sortable="custom" width="160">
+          <template #default="{ row }">{{ formatDateTime(row.shipment_date) }}</template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="创建时间" sortable="custom" width="160">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="160" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="auth.canEdit('orders')" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button v-if="auth.canEdit('orders')" size="small" type="danger" @click="confirmDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 移动端卡片列表 -->
+      <div v-else v-loading="loading" class="space-y-3 mt-2">
+        <div
+          v-for="row in orders"
+          :key="row.id"
+          :class="['rounded-xl border p-4 shadow-sm transition-colors', row.id == highlightedId ? 'border-blue-500 bg-blue-50/40 dark:bg-blue-950/40 highlight-flash-card-active highlight-target-item' : 'border-slate-200 dark:border-industrial-border bg-slate-50 dark:bg-industrial-900/50', 'highlight-flash-card']" 
+          @click="$router.push(`/orders/${row.id}`)"
+        >
+          <div class="flex items-start justify-between mb-2">
+            <div>
+              <span class="text-blue-500 font-bold text-sm">#{{ row.order_no }}</span>
+              <p class="text-slate-800 dark:text-slate-100 font-semibold text-base mt-0.5">{{ row.product_name }}</p>
+            </div>
+            <div class="flex flex-col items-end gap-1">
+              <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+              <el-tag :type="prioType(row.priority)" size="small">{{ ['普通','紧急','特急'][row.priority] || '普通' }}</el-tag>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mb-3">
+            <span v-if="row.customer_name">客户：{{ row.customer_name }}</span>
+            <span v-if="row.current_step_name">当前工序：{{ row.current_step_name }}</span>
+            <span v-if="row.shipment_date">交付：{{ formatDateTime(row.shipment_date) }}</span>
+          </div>
+          <div v-if="auth.canEdit('orders')" class="flex gap-2 border-t border-slate-200 dark:border-industrial-border pt-3" @click.stop>
+            <el-button size="small" @click="openEdit(row)" class="flex-1">编辑</el-button>
+            <el-button size="small" type="danger" @click="confirmDelete(row)" class="flex-1">删除</el-button>
+          </div>
+        </div>
+        <div v-if="orders.length === 0" class="py-16 text-center text-slate-400 dark:text-slate-500 text-sm">
+          <el-empty description="暂无订单数据" />
+        </div>
+      </div>
+
+      <div class="mt-4 flex justify-end overflow-x-auto">
+        <el-pagination background :layout="isMobile ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next'" :total="total" v-model:current-page="params.page" v-model:page-size="params.limit" :page-sizes="[10,20,50]" @current-change="fetchOrders" @size-change="fetchOrders" :small="isMobile" />
+      </div>
     </div>
 
-    <el-dialog v-model="dialogVisible" title="新建订单" width="500px">
-      <el-form ref="createFormRef" :model="newOrder" :rules="formRules" label-width="100px">
+    <el-dialog v-model="dialogVisible" title="新建订单" :width="isMobile ? '95vw' : '500px'">
+      <el-form ref="createFormRef" :model="newOrder" :rules="formRules" :label-position="isMobile ? 'top' : 'right'" label-width="100px">
         <el-form-item label="订单号" prop="order_no"><el-input v-model="newOrder.order_no" placeholder="必填" /></el-form-item>
         <el-form-item label="产品名称" prop="product_name"><el-input v-model="newOrder.product_name" placeholder="必填" /></el-form-item>
         <el-form-item label="客户" prop="customer_id">
-          <el-select v-model="newOrder.customer_id" filterable clearable placeholder="选择客户">
+          <el-select v-model="newOrder.customer_id" filterable clearable placeholder="选择客户" style="width:100%">
             <el-option v-for="c in customers" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="工艺模板" prop="template_flow_id">
-          <el-select v-model="newOrder.template_flow_id" placeholder="选择模板">
+          <el-select v-model="newOrder.template_flow_id" placeholder="选择模板" style="width:100%">
             <el-option v-for="f in templates" :key="f.id" :label="f.name" :value="f.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="优先级" prop="priority"><el-select v-model="newOrder.priority"><el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" /></el-select></el-form-item>
+        <el-form-item label="优先级" prop="priority"><el-select v-model="newOrder.priority" style="width:100%"><el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" /></el-select></el-form-item>
         <el-form-item label="交付日期"><el-date-picker v-model="newOrder.shipment_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:100%" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="newOrder.notes" type="textarea" /></el-form-item>
       </el-form>
@@ -84,16 +122,16 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="editDialogVisible" title="编辑订单" width="500px">
-      <el-form ref="editFormRef" :model="editingOrder" :rules="formRules" label-width="100px">
+    <el-dialog v-model="editDialogVisible" title="编辑订单" :width="isMobile ? '95vw' : '500px'">
+      <el-form ref="editFormRef" :model="editingOrder" :rules="formRules" :label-position="isMobile ? 'top' : 'right'" label-width="100px">
         <el-form-item label="订单号" prop="order_no"><el-input v-model="editingOrder.order_no" placeholder="必填" /></el-form-item>
         <el-form-item label="产品名称" prop="product_name"><el-input v-model="editingOrder.product_name" placeholder="必填" /></el-form-item>
         <el-form-item label="客户" prop="customer_id">
-          <el-select v-model="editingOrder.customer_id" filterable clearable placeholder="选择客户">
+          <el-select v-model="editingOrder.customer_id" filterable clearable placeholder="选择客户" style="width:100%">
             <el-option v-for="c in customers" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="优先级" prop="priority"><el-select v-model="editingOrder.priority"><el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" /></el-select></el-form-item>
+        <el-form-item label="优先级" prop="priority"><el-select v-model="editingOrder.priority" style="width:100%"><el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" /></el-select></el-form-item>
         <el-form-item label="交付日期"><el-date-picker v-model="editingOrder.shipment_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:100%" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="editingOrder.notes" type="textarea" /></el-form-item>
       </el-form>
@@ -106,11 +144,18 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch, nextTick } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, watch, nextTick, onActivated } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
 import { useAuthStore } from '../stores/auth.js';
+
+defineOptions({ name: 'Orders' });
+
+const isMobile = ref(window.innerWidth < 768);
+function onResize() { isMobile.value = window.innerWidth < 768; }
+onMounted(() => window.addEventListener('resize', onResize));
+onUnmounted(() => window.removeEventListener('resize', onResize));
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -140,44 +185,72 @@ const sortMap = { descending: 'desc', ascending: 'asc' };
 
 const highlightedId = ref(null);
 
-onMounted(async () => { 
-  if (route.query.status) params.status = route.query.status;
-  
-  if (route.query.highlight) {
-    const targetId = parseInt(route.query.highlight);
-    highlightedId.value = targetId;
-    // 先定位分页，再加载数据
-    await locateOrderPage(targetId);
-  }
-  
-  await fetchOrders();
+onMounted(() => { 
   fetchTemplates(); 
   fetchCustomers(); 
 });
 
-watch(() => route.query.highlight, async (newVal) => {
-  if (newVal) {
-    const targetId = parseInt(newVal);
-    highlightedId.value = targetId;
-    await locateOrderPage(targetId);
-    await fetchOrders();
-  } else {
-    highlightedId.value = null;
+onActivated(() => {
+  // 切回该页面时静默刷新
+  if (orders.value.length > 0) {
+    fetchOrders(true);
   }
 });
 
+function triggerHighlightScroll() {
+  if (highlightedId.value) {
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const el = document.querySelector('.highlight-target-item');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      });
+    });
+  }
+}
+
+watch(() => route.query.highlight, async (newVal) => {
+  if (route.query.status) {
+    params.status = route.query.status;
+  }
+  if (newVal) {
+    const targetId = parseInt(newVal);
+    // 重置 highlight 触发 DOM 重新挂载动画，解决动画不重放的问题
+    highlightedId.value = null;
+    await nextTick();
+    highlightedId.value = targetId;
+
+    const exists = orders.value.some(o => o.id === targetId);
+    if (exists) {
+      triggerHighlightScroll(); // 0 延迟立刻滚动并高亮
+      locateOrderPage(targetId).then(() => fetchOrders(true)); // 后台静默兜底刷新
+      return;
+    }
+    
+    await locateOrderPage(targetId);
+  } else {
+    highlightedId.value = null;
+  }
+  await fetchOrders(true);
+  triggerHighlightScroll();
+}, { immediate: true });
+
 async function locateOrderPage(targetId) {
   try {
-    // 请求不分页的大列表计算定位
-    const tempParams = { ...params, page: 1, limit: 100000 };
-    const r = await api.get('/orders', { params: tempParams });
-    const allItems = r.data.data;
-    const idx = allItems.findIndex(x => x.id === targetId);
-    if (idx !== -1) {
-      const targetPage = Math.floor(idx / params.limit) + 1;
-      params.page = targetPage;
+    const r = await api.get(`/orders/${targetId}/locate`, {
+      params: {
+        limit: params.limit,
+        status: params.status,
+        priority: params.priority,
+        keyword: params.keyword,
+        sort_by: params.sort_by,
+        sort_order: params.sort_order
+      }
+    });
+    if (r.data && r.data.page !== undefined) {
+      params.page = r.data.page;
     } else {
-      ElMessage.warning("该通知对应的订单不存在或已被删除！");
       highlightedId.value = null;
     }
   } catch (e) {
@@ -185,25 +258,14 @@ async function locateOrderPage(targetId) {
   }
 }
 
-async function fetchOrders() {
-  loading.value = true;
+async function fetchOrders(silent = false) {
+  if (!silent || orders.value.length === 0) {
+    loading.value = true;
+  }
   try { 
     const r = await api.get('/orders', { params }); 
     orders.value = r.data.data; 
     total.value = r.data.total; 
-    
-    if (highlightedId.value) {
-      await nextTick();
-      // 用 requestAnimationFrame 确保 DOM 完全渲染后再滞动
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const el = document.querySelector('.highlight-flash-row');
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        });
-      });
-    }
   }
   catch {} finally { loading.value = false; }
 }
@@ -212,7 +274,7 @@ async function fetchTemplates() { try { const r = await api.get('/process-flows'
 async function fetchCustomers() { try { const r = await api.get('/customers'); customers.value = r.data; } catch {} }
 
 function tableRowClassName({ row }) {
-  return row.id == highlightedId.value ? 'highlight-flash-row' : '';
+  return row.id == highlightedId.value ? 'highlight-flash-row highlight-target-item' : '';
 }
 
 function search() { highlightedId.value = null; params.page = 1; fetchOrders(); }
@@ -298,22 +360,4 @@ function formatDateTime(val) {
 
 <style scoped>
 .search-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0; }
-
-/* 用 inset box-shadow 模拟背景色闪烁，避开 el-table CSS 变量对 background-color 的覆盖 */
-:global(@keyframes row-flash) {
-  0%, 100% {
-    box-shadow: inset 0 0 0 2000px transparent;
-  }
-  25%, 75% {
-    box-shadow: inset 0 0 0 2000px rgba(64, 158, 255, 0.22), 0 0 8px rgba(64, 158, 255, 0.2);
-  }
-}
-:deep(.el-table tbody tr.highlight-flash-row) {
-  --el-table-tr-bg-color: transparent !important;
-}
-:deep(.el-table tbody tr.highlight-flash-row td.el-table__cell) {
-  animation: row-flash 1.2s ease-in-out 3;
-  border-bottom: 2px solid rgba(64, 158, 255, 0.5) !important;
-  border-top: 2px solid rgba(64, 158, 255, 0.5) !important;
-}
 </style>

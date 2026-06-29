@@ -67,8 +67,6 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = models.User(
         username=user.username,
         password_hash=hashed,
-        display_name=user.display_name,
-        role_label=user.role_label,
         is_admin=user.is_admin,
         is_active=user.is_active
     )
@@ -92,8 +90,6 @@ def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="用户名不能为空")
     
     db_user.username = user.username
-    db_user.display_name = user.display_name
-    db_user.role_label = user.role_label
     db_user.is_admin = user.is_admin
     db_user.is_active = user.is_active
     

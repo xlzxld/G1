@@ -8,8 +8,6 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    display_name = Column(String, nullable=False)
-    role_label = Column(String, default="")
     password_hash = Column(String, nullable=False)
     is_admin = Column(Integer, default=0)
     is_active = Column(Integer, default=1)

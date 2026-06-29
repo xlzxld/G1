@@ -98,8 +98,8 @@
     </div>
 
     <!-- Add Material Modal -->
-    <el-dialog v-model="dialogVisible" title="分配零配件用料" width="440px" append-to-body>
-      <el-form label-width="80px" class="mt-2">
+    <el-dialog v-model="dialogVisible" title="分配零配件用料" :width="isMobile ? '95vw' : '440px'" append-to-body>
+      <el-form :label-position="isMobile ? 'top' : 'right'" label-width="80px" class="mt-2">
         <el-form-item label="选择零配件">
           <el-select
             v-model="form.item_id"
@@ -211,8 +211,8 @@ async function fetchMaterials() {
 
 async function fetchInventory() {
   try {
-    const res = await api.get('/inventory');
-    inventoryItems.value = res.data;
+    const res = await api.get('/inventory', { params: { limit: 100000 } });
+    inventoryItems.value = Array.isArray(res.data) ? res.data : (res.data?.data || []);
   } catch (e) {
     console.error("加载库存零配件失败", e);
   }

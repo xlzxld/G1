@@ -53,3 +53,27 @@ html.dark {
     display: none !important;
   }
 }
+
+/* -----------------------------------------
+   全局高性能瞬间定位与高亮闪烁机制样式 
+----------------------------------------- */
+@keyframes custom-flash {
+  0%, 100% {
+    background-color: transparent;
+  }
+  25%, 75% {
+    background-color: rgba(64, 158, 255, 0.25);
+    box-shadow: inset 0 0 12px rgba(64, 158, 255, 0.4);
+  }
+}
+
+/* 桌面端: Element Plus 表格的整行高亮 */
+.el-table tbody tr.highlight-flash-row td.el-table__cell {
+  animation: custom-flash 1.2s ease-in-out 3 !important;
+}
+
+/* 移动端: 独立卡片或区块的高亮 */
+.highlight-flash-card-active, .highlight-flash {
+  animation: custom-flash 1.2s ease-in-out 3 !important;
+  border-color: rgba(64, 158, 255, 0.6) !important;
+}

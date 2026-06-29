@@ -148,3 +148,39 @@ def check_inventory_alert(item_id: int, db: Session):
                 trigger_notification_rules("inventory_alert", context, db)
     except Exception as e:
         print(f"Check inventory alert failed: {e}")
+
+from sqlalchemy import desc, asc
+
+@router.get("/{item_id}/locate")
+def locate_inventory_page(
+    item_id: int,
+    db: Session = Depends(get_db),
+    limit: int = 20,
+    keyword: str = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc"
+):
+    query = db.query(models.InventoryItem)
+    if keyword:
+        query = query.filter(models.InventoryItem.name.ilike(f"%{keyword}%"))
+
+    target_item = db.query(models.InventoryItem).filter(models.InventoryItem.id == item_id).first()
+    if not target_item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    if sort_by and hasattr(models.InventoryItem, sort_by):
+        column = getattr(models.InventoryItem, sort_by)
+        if sort_order == 'asc':
+            query = query.order_by(asc(column))
+        else:
+            query = query.order_by(desc(column))
+    else:
+        query = query.order_by(desc(models.InventoryItem.created_at))
+
+    all_ids = [r[0] for r in query.with_entities(models.InventoryItem.id).all()]
+    try:
+        idx = all_ids.index(item_id)
+        page = (idx // limit) + 1
+        return {"page": page}
+    except ValueError:
+        return {"page": 1}

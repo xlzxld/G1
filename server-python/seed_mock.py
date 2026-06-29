@@ -151,8 +151,8 @@ def seed_mock():
             db.add(vendor)
         db.commit()
         
-        # 6. Create 25 Orders with random template assignment (25 items)
-        print("Creating 25 orders & assigning process flows...")
+        # 6. Create 60 Orders with random template assignment (60 items)
+        print("Creating 60 orders & assigning process flows...")
         product_names = [
             "Model Y仪表盘热流道系统", "卡罗拉前保险杠热流道板", "iPhone 18 Pro金属中框模具", 
             "大疆无人机机身模具", "格力空调面板针阀式热嘴", "华为Mate 80后壳热流道", 
@@ -167,20 +167,25 @@ def seed_mock():
         
         today = datetime.now()
         
-        # We want to distribute status: e.g. 15 in_progress, 6 completed, 4 paused
-        statuses = ["in_progress"] * 15 + ["completed"] * 6 + ["paused"] * 4
+        # We want to distribute status for 60 orders: 35 in_progress, 15 completed, 10 paused
+        statuses = ["in_progress"] * 35 + ["completed"] * 15 + ["paused"] * 10
         random.shuffle(statuses)
         
-        for idx in range(1, 26):
+        for idx in range(1, 61):
             order_no = f"ORD-2026-{idx:04d}"
-            prod_name = product_names[idx - 1]
-            cust_id = random.choice(c_ids)
+            # 丰富产品命名，附带批次编号
+            base_prod_name = product_names[(idx - 1) % len(product_names)]
+            batch_num = (idx - 1) // len(product_names) + 1
+            prod_name = f"{base_prod_name} (批次 {batch_num})"
+            
+            # 使用取模运算轮流分配客户，以确保每个客户都精确获得 12 条订单（大于 10 条）
+            cust = db_customers[(idx - 1) % len(db_customers)]
+            cust_id = cust.id
+            cust_name = cust.name
+            
             priority = random.choice([0, 1, 2]) # 0=普通, 1=紧急, 2=特急
             status = statuses[idx - 1]
             ship_days = random.choice([5, 10, 15, 20, 25, -2, -5]) # some past, some future
-            
-            # Find customer name
-            cust_name = next(c.name for c in db_customers if c.id == cust_id)
             
             order = models.Order(
                 order_no=order_no,
@@ -345,7 +350,7 @@ def seed_mock():
         print(f"  → {generated} unread notifications created.")
 
         print("Mock data generated successfully!")
-        print(f"Stats: 5 Customers, 3 Templates, 25 Inventory Items, 3 Vendors, 30 Notifications, 25 Orders.")
+        print(f"Stats: 5 Customers, 3 Templates, 25 Inventory Items, 3 Vendors, 30 Notifications, 60 Orders.")
         
     except Exception as e:
         print(f"Error seeding data: {e}")

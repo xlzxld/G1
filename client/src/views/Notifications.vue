@@ -1,11 +1,11 @@
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex items-start sm:items-center justify-between mb-6 flex-col sm:flex-row gap-3">
       <div>
         <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">通知中心</h2>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">消息通知与自动化规则</p>
       </div>
-      <div>
+      <div class="flex gap-2">
         <el-button v-if="auth.canEdit('notifications')" @click="sendVisible = true" type="primary"><el-icon><Promotion /></el-icon> 派发通知</el-button>
         <el-button @click="markAllRead" v-if="unreadCount > 0">全部已读</el-button>
       </div>
@@ -42,9 +42,9 @@
       />
     </div>
 
-    <el-dialog v-model="sendVisible" title="派发通知" width="440px">
-      <el-form ref="sendFormRef" :model="form" :rules="rules" label-width="70px">
-        <el-form-item label="接收人" prop="to_user_id"><el-select v-model="form.to_user_id" filterable placeholder="选择用户"><el-option v-for="u in users" :key="u.id" :label="`${u.username}`" :value="u.id" /></el-select></el-form-item>
+    <el-dialog v-model="sendVisible" title="派发通知" :width="isMobile ? '95vw' : '440px'">
+      <el-form ref="sendFormRef" :model="form" :rules="rules" :label-position="isMobile ? 'top' : 'right'" label-width="70px">
+        <el-form-item label="接收人" prop="to_user_id"><el-select v-model="form.to_user_id" filterable placeholder="选择用户" style="width:100%"><el-option v-for="u in users" :key="u.id" :label="`${u.username}`" :value="u.id" /></el-select></el-form-item>
         <el-form-item label="标题" prop="title"><el-input v-model="form.title" /></el-form-item>
         <el-form-item label="内容"><el-input v-model="form.body" type="textarea" /></el-form-item>
       </el-form>
@@ -54,10 +54,15 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '../api/index.js';
+
+const isMobile = ref(window.innerWidth < 768);
+function onResize() { isMobile.value = window.innerWidth < 768; }
+window.addEventListener('resize', onResize);
+onUnmounted(() => window.removeEventListener('resize', onResize));
 import { useAuthStore } from '../stores/auth.js';
 
 const auth = useAuthStore();
@@ -158,10 +163,14 @@ function formatDateTime(val) {
 
 function getFriendlyLink(link) {
   if (!link) return '';
-  // 兼容老数据：如果 link 为 /orders/123，自动转换为列表页高亮形式 /orders?highlight=123
+  // 如果服务端下发的是旧格式 /orders/123，可将其转化为新格式 /orders?highlight=123 (备用兼容)
   const orderMatch = link.match(/^\/orders\/(\d+)$/);
   if (orderMatch) {
     return `/orders?highlight=${orderMatch[1]}`;
+  }
+  const inventoryMatch = link.match(/^\/inventory\/(\d+)$/);
+  if (inventoryMatch) {
+    return `/inventory?highlight=${inventoryMatch[1]}`;
   }
   return link;
 }
@@ -186,18 +195,3 @@ async function goToDetail(n) {
 }
 </script>
 
-<style scoped>
-@keyframes flash {
-  0%, 100% {
-    background-color: transparent;
-  }
-  25%, 75% {
-    background-color: rgba(64, 158, 255, 0.25);
-    box-shadow: 0 0 12px rgba(64, 158, 255, 0.3);
-  }
-}
-.highlight-flash {
-  animation: flash 1.2s ease-in-out 3;
-  border: 1px solid rgba(64, 158, 255, 0.4);
-}
-</style>

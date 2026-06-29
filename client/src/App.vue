@@ -110,7 +110,7 @@
           </el-popover>
           <el-dropdown trigger="click">
             <span class="cursor-pointer text-slate-800 dark:text-slate-200 flex items-center">
-              {{ auth.user?.display_name }}
+              {{ auth.user?.username }}
               <el-icon class="ml-1"><ArrowDown /></el-icon>
             </span>
             <template #dropdown>
@@ -126,7 +126,11 @@
 
       <!-- Main Scrollable Area -->
       <main class="flex-1 overflow-auto p-4 lg:p-6 bg-slate-100 dark:bg-industrial-900 text-slate-800 dark:text-slate-200">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <keep-alive include="Orders,Inventory,Customers,ProcessFlow,Outsourcing,Users,CustomerDetail">
+            <component :is="Component" />
+          </keep-alive>
+        </router-view>
       </main>
     </div>
   </div>
@@ -167,25 +171,18 @@ onMounted(() => {
   });
 });
 
-// Watch token to start/stop polling
+// Watch token to start/stop SSE stream
 watch(() => auth.token, (newVal) => {
   if (newVal) {
     auth.fetchNotifications();
-    if (!poller) {
-      poller = setInterval(() => {
-        auth.fetchNotifications();
-      }, 30000);
-    }
+    auth.setupSSE();
   } else {
-    if (poller) {
-      clearInterval(poller);
-      poller = null;
-    }
+    auth.closeSSE();
   }
 }, { immediate: true });
 
 onUnmounted(() => {
-  if (poller) clearInterval(poller);
+  auth.closeSSE();
 });
 
 function updateThemeColor(isDarkTheme) {

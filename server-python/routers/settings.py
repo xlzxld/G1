@@ -28,15 +28,15 @@ def get_audit_logs(db: Session = Depends(get_db), current_user: dict = Depends(r
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Forbidden")
     
-    logs = db.query(models.AuditLog, models.User.display_name, models.User.username)\
+    logs = db.query(models.AuditLog, models.User.username)\
              .outerjoin(models.User, models.AuditLog.user_id == models.User.id)\
              .order_by(models.AuditLog.created_at.desc())\
              .limit(200)\
              .all()
              
     result = []
-    for log, display_name, username in logs:
+    for log, username in logs:
         log_dict = log.__dict__.copy()
-        log_dict["display_name"] = display_name or username or "系统"
+        log_dict["username"] = username or "系统"
         result.append(log_dict)
     return result

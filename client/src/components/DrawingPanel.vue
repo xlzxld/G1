@@ -1,40 +1,50 @@
 <template>
   <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-5 shadow-lg">
     <!-- 标题栏 -->
-    <div class="flex justify-between items-center mb-5">
-      <div class="flex items-center gap-3">
-        <h2 class="text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400 font-semibold flex items-center gap-2">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5 border-b border-slate-100 dark:border-industrial-border pb-3">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+        <h2 class="text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400 font-semibold flex items-center gap-2 shrink-0">
           <el-icon><Picture /></el-icon>工程图纸与附件
         </h2>
         <!-- 一级 Tab 切换：预览图 / 工程文件 -->
-        <div class="flex bg-slate-100 dark:bg-industrial-700 rounded-lg p-0.5 text-xs">
+        <div class="flex bg-slate-100 dark:bg-industrial-700 rounded-lg p-0.5 text-xs w-full sm:w-fit justify-between sm:justify-start">
           <button
             @click="activeTab = 'preview'; activeSubCategory = '2D图'"
             :class="activeTab === 'preview'
-              ? 'bg-white dark:bg-industrial-600 text-slate-800 dark:text-white shadow-sm'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
-            class="px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1"
+              ? 'bg-blue-500 text-white shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+            class="px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1 flex-1 sm:flex-none justify-center"
           >
             <span>预览图</span>
-            <span class="bg-slate-200 dark:bg-industrial-500 text-slate-600 dark:text-slate-300 px-1 rounded-full text-[9px]">
+            <span 
+              :class="activeTab === 'preview'
+                ? 'bg-white/20 text-white'
+                : 'bg-slate-200 dark:bg-industrial-500 text-slate-600 dark:text-slate-300'"
+              class="px-1.5 py-0.5 rounded-full text-[9px]"
+            >
               {{ totalPreviewCount }}
             </span>
           </button>
           <button
             @click="activeTab = 'engineering'; activeSubCategory = '2D图'"
             :class="activeTab === 'engineering'
-              ? 'bg-white dark:bg-industrial-600 text-slate-800 dark:text-white shadow-sm'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
-            class="px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1"
+              ? 'bg-blue-500 text-white shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'"
+            class="px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1 flex-1 sm:flex-none justify-center"
           >
             <span>工程文件</span>
-            <span class="bg-slate-200 dark:bg-industrial-500 text-slate-600 dark:text-slate-300 px-1 rounded-full text-[9px]">
+            <span 
+              :class="activeTab === 'engineering'
+                ? 'bg-white/20 text-white'
+                : 'bg-slate-200 dark:bg-industrial-500 text-slate-600 dark:text-slate-300'"
+              class="px-1.5 py-0.5 rounded-full text-[9px]"
+            >
               {{ totalEngineeringCount }}
             </span>
           </button>
         </div>
       </div>
-      <el-button v-if="canEdit" type="primary" size="small" @click="openUpload">
+      <el-button v-if="canEdit" type="primary" size="small" @click="openUpload" class="w-full sm:w-auto min-h-[36px] sm:min-h-0">
         <el-icon><Upload /></el-icon>&nbsp;上传文件
       </el-button>
     </div>
@@ -337,7 +347,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   Picture, PictureFilled, Document, Upload, UploadFilled,
@@ -353,6 +363,11 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['refresh']);
+
+const isMobile = ref(window.innerWidth < 768);
+function onResize() { isMobile.value = window.innerWidth < 768; }
+onMounted(() => window.addEventListener('resize', onResize));
+onUnmounted(() => window.removeEventListener('resize', onResize));
 
 const auth = useAuthStore();
 const canEdit = computed(() => auth.isAdmin || auth.canEdit('drawings'));

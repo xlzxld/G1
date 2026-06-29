@@ -5,8 +5,71 @@ from database import get_db
 import models, schemas
 from routers.auth import read_users_me
 from pydantic import BaseModel
+import asyncio
+from fastapi.responses import StreamingResponse
+from jose import jwt
+from routers.auth import SECRET_KEY, ALGORITHM
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections = {}
+
+    def connect(self, user_id: int, queue: asyncio.Queue):
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(queue)
+
+    def disconnect(self, user_id: int, queue: asyncio.Queue):
+        if queue in self.active_connections.get(user_id, []):
+            self.active_connections[user_id].remove(queue)
+            if not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+
+    def notify_user(self, user_id: int):
+        if user_id in self.active_connections:
+            for queue in self.active_connections[user_id]:
+                try:
+                    queue.put_nowait("refresh")
+                except Exception:
+                    pass
+
+manager = ConnectionManager()
+
+def get_user_id_from_token(token: str) -> Optional[int]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return int(payload.get("sub"))
+    except Exception:
+        return None
+
+@router.get("/stream")
+async def message_stream(token: str = None):
+    if not token:
+        raise HTTPException(status_code=401, detail="Token is missing")
+    user_id = get_user_id_from_token(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    queue = asyncio.Queue()
+    manager.connect(user_id, queue)
+    
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    # 45秒心跳检测检测间隔时间（最大程度降低由唤醒引起的性能损耗）
+                    message = await asyncio.wait_for(queue.get(), timeout=45.0)
+                    yield f"data: {message}\n\n"
+                except asyncio.TimeoutError:
+                    yield "data: ping\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            manager.disconnect(user_id, queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @router.get("", response_model=List[schemas.NotificationResponse])
 def get_notifications(db: Session = Depends(get_db), current_user: dict = Depends(read_users_me)):
@@ -45,6 +108,7 @@ def create_notification(notif: schemas.NotificationCreate, db: Session = Depends
     db.add(db_notif)
     db.commit()
     db.refresh(db_notif)
+    manager.notify_user(notif.to_user_id)
     return db_notif
 
 # ────────────────────────── 通知规则管理 ──────────────────────────
@@ -188,5 +252,8 @@ def trigger_notification_rules(event: str, context: dict, db: Session):
                 db.add(new_notif)
                 
         db.commit()
+        # 触发实时推送更新
+        for uid in to_user_ids:
+            manager.notify_user(uid)
     except Exception as e:
         print(f"Trigger notification rules error: {e}")

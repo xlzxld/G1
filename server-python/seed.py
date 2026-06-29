@@ -12,9 +12,9 @@ def seed_db():
     db = SessionLocal()
     
     users = [
-        {"username": "admin", "password": "123", "display_name": "Admin", "role_label": "管理员", "is_admin": 1},
-        {"username": "laowang", "password": "123", "display_name": "老王", "role_label": "车间工人", "is_admin": 0},
-        {"username": "xiaoli", "password": "123", "display_name": "小李", "role_label": "设计师", "is_admin": 0},
+        {"username": "admin", "password": "123", "is_admin": 1},
+        {"username": "laowang", "password": "123", "is_admin": 0},
+        {"username": "xiaoli", "password": "123", "is_admin": 0},
     ]
     
     for u in users:
@@ -28,8 +28,6 @@ def seed_db():
         else:
             new_user = User(
                 username=u["username"],
-                display_name=u["display_name"],
-                role_label=u["role_label"],
                 password_hash=get_password_hash(u["password"]),
                 is_admin=u["is_admin"],
                 is_active=1
