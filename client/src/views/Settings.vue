@@ -65,7 +65,9 @@
 
       <el-tab-pane label="操作日志" v-if="auth.isAdmin">
         <el-table :data="logs" border stripe max-height="500" style="width: 100%">
-          <el-table-column prop="created_at" label="时间" width="220" />
+          <el-table-column prop="created_at" label="时间" width="180">
+            <template #default="{row}">{{ formatDateTime(row.created_at) }}</template>
+          </el-table-column>
           <el-table-column prop="display_name" label="操作人" width="100" />
           <el-table-column prop="action" label="操作" width="80">
             <template #default="{row}">{{ formatAction(row.action) }}</template>
@@ -244,8 +246,25 @@ function formatAction(action) {
 }
 
 function formatEntity(entity) {
-  const map = { 'customers': '客户管理', 'orders': '订单管理', 'inventory': '库存管理', 'process': '工艺流程', 'process-flows': '工艺模板', 'users': '账号管理', 'vendors': '外协管理', 'notifications': '通知中心', 'settings': '系统设置', 'auth': '登录认证' };
+  const map = { 
+    'customers': '客户管理', 
+    'orders': '订单管理', 
+    'inventory': '库存管理', 
+    'process': '工艺流程', 
+    'process-flows': '工艺模板', 
+    'users': '账号管理', 
+    'vendors': '外协管理', 
+    'notifications': '通知中心', 
+    'settings': '系统设置', 
+    'auth': '登录认证',
+    'documents': '图纸管理'
+  };
   return map[entity] || entity;
+}
+
+function formatDateTime(val) {
+  if (!val) return '—';
+  return val.slice(0, 19).replace('T', ' ');
 }
 
 // ────────────────────────── 通知规则联动逻辑 ──────────────────────────

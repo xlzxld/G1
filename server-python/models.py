@@ -93,8 +93,6 @@ class ProcessStep(Base):
     name = Column(String, nullable=False)
     seq = Column(Integer, default=0)
     required = Column(Integer, default=1)
-    can_parallel = Column(Integer, default=0)
-    depends_on_step_id = Column(Integer, nullable=True)
     outsourced = Column(Integer, default=0)
     vendor_id = Column(Integer, nullable=True)
     sent_date = Column(DateTime, nullable=True)
@@ -115,6 +113,7 @@ class Document(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    step_id = Column(Integer, ForeignKey("process_steps.id", ondelete="CASCADE"), nullable=True)
     filename = Column(String, nullable=False)
     original_name = Column(String, nullable=False)
     category = Column(String, default="图纸")

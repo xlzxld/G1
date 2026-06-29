@@ -2,9 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --el-color-primary: #7aa2f7;
+  --el-color-primary-light-3: #9ab8fa;
+  --el-color-primary-light-5: #b5cbfb;
+  --el-color-primary-light-7: #d1ddfc;
+  --el-color-primary-light-8: #dee6fd;
+  --el-color-primary-light-9: #ecf0fe;
+  --el-color-primary-dark-2: #5b87e4;
+}
+
 @layer base {
   body {
-    @apply bg-industrial-900 text-slate-200;
+    @apply bg-slate-50 dark:bg-industrial-900 text-slate-800 dark:text-slate-200;
   }
 }
 
@@ -21,4 +31,25 @@ html.dark {
   --el-color-primary: #7aa2f7;
   --el-color-primary-light-9: rgba(122, 162, 247, 0.1);
   --el-fill-color-light: rgba(255, 255, 255, 0.05);
+}
+
+/* Mobile Optimization: Global responsive dialog width */
+@media (max-width: 768px) {
+  .el-dialog {
+    max-width: 95% !important;
+    width: 95% !important;
+    margin: 20px auto !important;
+  }
+}
+
+/* Common utility classes for quick responsive switching */
+@media (max-width: 768px) {
+  .pc-only {
+    display: none !important;
+  }
+}
+@media (min-width: 769px) {
+  .mobile-only {
+    display: none !important;
+  }
 }

@@ -9,6 +9,9 @@ from sqlalchemy import text
 with engine.connect() as connection:
     try:
         connection.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS inventory_deducted INTEGER DEFAULT 0;"))
+        connection.execute(text("ALTER TABLE process_steps DROP COLUMN IF EXISTS can_parallel;"))
+        connection.execute(text("ALTER TABLE process_steps DROP COLUMN IF EXISTS depends_on_step_id;"))
+        connection.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS step_id INTEGER REFERENCES process_steps(id) ON DELETE CASCADE;"))
         connection.commit()
     except Exception as e:
         print(f"Error modifying database: {e}")
@@ -182,17 +185,50 @@ def get_friendly_detail(method: str, path: str, db) -> str:
         if method == "PUT": return f"修改了外协加工商 ID:{v_id} 的联系信息"
         if method == "DELETE": return f"删除了外协加工商 ID:{v_id}"
         
-    # 7. 其他设定
+    # 7. 工艺模板
+    elif base == "process-flows":
+        if len(parts) == 1:
+            if method == "POST": return "创建了新工艺模板"
+        elif len(parts) == 2:
+            if method == "PUT": return f"修改了工艺模板 ID:{parts[1]} 的基本信息"
+            if method == "DELETE": return f"删除了工艺模板 ID:{parts[1]}"
+        elif len(parts) >= 3 and parts[2] == "steps":
+            return f"更新了工艺模板 ID:{parts[1]} 的工序步骤配置"
+
+    # 8. 通知中心
+    elif base == "notifications":
+        if len(parts) == 1:
+            if method == "POST": return "派发了新通知"
+        elif len(parts) == 2 and parts[1] == "read-all":
+            return "标记了全部通知为已读"
+        elif len(parts) == 3 and parts[2] == "read":
+            return f"将通知 ID:{parts[1]} 标记为已读"
+
+    # 9. 其他设定
     elif base == "settings":
-        return "修改了MES系统核心参数"
+        return "修改了主系统配置参数"
         
+    # 汉化映射表：为所有非特化处理的 API 路径兜底，确保详情里绝不漏英文
+    entity_map = {
+        "customers": "客户档案",
+        "orders": "订单",
+        "inventory": "库存零配件",
+        "process-flows": "工艺模板",
+        "users": "用户账号",
+        "vendors": "外协厂商",
+        "notifications": "通知中心",
+        "settings": "系统设置",
+        "auth": "登录认证",
+        "documents": "图纸管理",
+        "process": "工艺流程",
+    }
+    translated_base = entity_map.get(base, base)
     action_word = "添加" if method == "POST" else "更新" if method == "PUT" else "删除" if method == "DELETE" else method
-    return f"{action_word}了 {base} 数据"
+    return f"{action_word}了 {translated_base} 数据"
 
 @app.middleware("http")
 async def audit_log_middleware(request: Request, call_next):
     method = request.method
-    # only audit mutations
     if method in ["POST", "PUT", "DELETE"]:
         path = request.url.path
         if path.startswith("/auth"):
@@ -200,29 +236,39 @@ async def audit_log_middleware(request: Request, call_next):
             
         auth_header = request.headers.get("Authorization", "")
         user_id = None
-        if auth_header.startswith("Bearer "):
-            token = auth_header.split("Bearer ")[1]
+        # 支持 Bearer / bearer 大小写不敏感的解析方式
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:]
             try:
                 from jose import jwt
                 from routers.auth import SECRET_KEY, ALGORITHM
                 payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
                 user_id = int(payload.get("sub"))
-            except Exception as e:
+            except Exception:
                 pass
                 
-        if not user_id:
-            user_id = 1
-            
-        action = "create" if method == "POST" else "update" if method == "PUT" else "delete"
-        entity_type = path.split("/")[1] if len(path.split("/")) > 1 else "unknown"
-        
         db = SessionLocal()
         try:
+            # 如果没拿到 user_id (没有 Token 或 Token 错误)，尝试寻找第一个管理员 ID，以避免关联不存在的 ID 1
+            if not user_id:
+                try:
+                    first_admin = db.query(models.User).filter(models.User.is_admin == 1).order_by(models.User.id).first()
+                    if first_admin:
+                        user_id = first_admin.id
+                    else:
+                        first_user = db.query(models.User).order_by(models.User.id).first()
+                        if first_user:
+                            user_id = first_user.id
+                except Exception:
+                    pass
+                # 仍为空时，如果表里没有任何用户，保留 None，外键设为 NULL 表明“系统/游客”触发
+                
+            action = "create" if method == "POST" else "update" if method == "PUT" else "delete"
             detail_text = get_friendly_detail(method, path, db)
             audit = models.AuditLog(
                 user_id=user_id,
                 action=action,
-                entity_type=entity_type,
+                entity_type=path.split("/")[1] if len(path.split("/")) > 1 else "unknown",
                 detail=detail_text
             )
             db.add(audit)

@@ -36,25 +36,18 @@
         <el-table-column label="必做" width="70" align="center">
           <template #default="{ row }"><el-switch v-model="row.required" size="small" /></template>
         </el-table-column>
-        <el-table-column label="可并行" width="80" align="center">
-          <template #default="{ row }"><el-switch v-model="row.can_parallel" size="small" /></template>
-        </el-table-column>
         <el-table-column label="完成条件" width="130">
           <template #default="{ row }">
             <el-select v-model="row.completion_condition" size="small">
               <el-option label="手动确认" value="manual" />
               <el-option label="上传照片" value="photo" />
-              <el-option label="勾选清单" value="checklist" />
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="负责人" width="120">
-          <template #default="{ row }"><el-input v-model="row.assignee" size="small" placeholder="用户名" /></template>
-        </el-table-column>
-        <el-table-column label="依赖" width="130">
-          <template #default="{ row, $index }">
-            <el-select v-model="row.depends_on_idx" size="small" clearable placeholder="无依赖" @change="v => updateDep(row, v)">
-              <el-option v-for="(s, i) in steps" v-if="i !== $index" :key="i" :label="(i+1) + '. ' + s.name" :value="i" />
+        <el-table-column label="负责人" width="160">
+          <template #default="{ row }">
+            <el-select v-model="row.assignee" size="small" placeholder="选择负责人" clearable filterable>
+              <el-option v-for="u in users" :key="u.id" :label="u.display_name || u.username" :value="u.username" />
             </el-select>
           </template>
         </el-table-column>
@@ -91,6 +84,7 @@ import { useAuthStore } from '../stores/auth.js';
 
 const auth = useAuthStore();
 const flows = ref([]);
+const users = ref([]);
 const loading = ref(false);
 const selectedFlow = ref(null);
 const steps = ref([]);
@@ -102,7 +96,13 @@ const formRef = ref(null);
 const form = reactive({ name: '', description: '' });
 const rules = { name: [{ required: true, message: '请输入模板名称', trigger: 'blur' }] };
 
-onMounted(fetchFlows);
+onMounted(async () => {
+  fetchFlows();
+  try {
+    const r = await api.get('/users');
+    users.value = r.data;
+  } catch {}
+});
 async function fetchFlows() { loading.value = true; try { const r = await api.get('/process-flows'); flows.value = r.data; } catch {} finally { loading.value = false; } }
 
 function openCreate() { editing.value = null; Object.assign(form, { name: '', description: '' }); formVisible.value = true; }
@@ -141,13 +141,13 @@ async function selectFlow(row) {
 
 function addStep() { steps.value.push({ name: '', seq: steps.value.length, required: true, can_parallel: false, completion_condition: 'manual', assignee: '', depends_on_step_id: null, depends_on_idx: null }); }
 
-function updateDep(row, targetIdx) {
-  if (targetIdx === null || targetIdx === undefined) { row.depends_on_step_id = null; return; }
-}
 
 async function saveSteps() {
   if (steps.value.some(s => !s.name || !s.name.trim())) {
     return ElMessage.error('存在空缺的工序名称，请填写后再保存');
+  }
+  if (steps.value.some(s => !s.assignee || !s.assignee.trim())) {
+    return ElMessage.error('每道工序都必须指定负责人，请选择后再保存');
   }
   savingSteps.value = true;
   try {

@@ -1,246 +1,258 @@
- # 数据库表结构
+# 数据库表结构
 
- 数据库引擎: SQLite (better-sqlite3)，迁移管理: Knex。  
- 所有时间字段使用 ISO 8601 文本格式 (`text`)，由 JavaScript 生成，非数据库原生时间戳。
+数据库引擎使用 **PostgreSQL 15**（由 Docker 中的 `db` 容器托管），由 SQLAlchemy ORM 进行实体映射与表结构自动同步。所有日期和时间字段采用 PostgreSQL 原生的 `TIMESTAMP WITHOUT TIME ZONE`（对应后端 `DateTime` 类型），并支持由数据库引擎在插入时自动填充默认时间戳。
 
- ## 实体关系图
+## 实体关系图 (Entity Relationship Diagram)
 
- ```
- users ──1:N── page_permissions
- users ──1:N── orders (created_by)
- users ──1:N── notifications (from/to)
- users ──1:N── documents (uploaded_by)
- users ──1:N── process_steps (completed_by)
- users ──1:N── audit_logs
- customers ──1:N── orders
- orders ──1:N── process_flows (is_template=0)
- orders ──1:N── documents
- orders ──1:N── inventory_reservations
- process_flows ──1:N── process_steps
- inventory_items ──1:N── inventory_reservations
- ```
+```
+users (用户) ──1:N── page_permissions (页面权限)
+users (用户) ──1:N── orders (订单创建人)
+users (用户) ──1:N── notifications (通知发送人/接收人)
+users (用户) ──1:N── documents (图纸上传人)
+users (用户) ──1:N── process_steps (工序完成人)
+users (用户) ──1:N── audit_logs (审计日志操作人)
 
- ## 表详细定义
+customers (客户) ──1:N── orders (订单)
 
- ### users — 用户
+orders (订单) ──1:1── process_flows (工序流程实例)
+orders (订单) ──1:N── documents (图纸文件)
+orders (订单) ──1:N── inventory_reservations (零配件预留)
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | username | TEXT | NOT NULL, UNIQUE | 登录名 |
- | display_name | TEXT | NOT NULL | 显示名称 |
- | role_label | TEXT | NOT NULL, DEFAULT '' | 角色标签（如"车间工人"） |
- | password_hash | TEXT | NOT NULL | bcrypt 哈希，10 rounds |
- | is_admin | INTEGER | NOT NULL, DEFAULT 0 | 管理员标志 (0/1) |
- | is_active | INTEGER | NOT NULL, DEFAULT 1 | 激活状态 (0/1) |
- | created_at | TEXT | NOT NULL, DEFAULT now | 创建时间 |
- | updated_at | TEXT | NOT NULL, DEFAULT now | 更新时间 |
+process_flows (工艺流程) ──1:N── process_steps (工序步骤)
 
- ### page_permissions — 页面权限矩阵
+inventory_items (库存零配件) ──1:N── inventory_reservations (预留明细)
+```
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | user_id | INTEGER | FK→users(id) ON DELETE CASCADE | 用户 |
- | page_key | TEXT | NOT NULL | 页面标识符 (dashboard, orders, ...) |
- | can_view | INTEGER | NOT NULL, DEFAULT 0 | 可见 (0/1) |
- | can_edit | INTEGER | NOT NULL, DEFAULT 0 | 可编辑 (0/1) |
+---
 
- 唯一约束: `(user_id, page_key)` — 每个用户对每个页面只有一条权限记录。
+## 表详细定义
 
- ### customers — 客户
+### 1. users — 用户账号表
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | name | TEXT | NOT NULL | 客户名称 |
- | contact | TEXT | DEFAULT '' | 旧版字段（已废弃，见下方 contact_methods） |
- | phone | TEXT | DEFAULT '' | 旧版字段 |
- | address | TEXT | DEFAULT '' | 地址 |
- | wechat | TEXT | DEFAULT '' | 旧版字段 |
- | email | TEXT | DEFAULT '' | 旧版字段 |
- | notes | TEXT | DEFAULT '' | 备注 |
- | contact_methods | TEXT | DEFAULT '[]' | JSON 数组: `[{"type":"电话","value":"138..."}]` |
- | created_at | TEXT | NOT NULL, DEFAULT now | 创建时间 |
- | updated_at | TEXT | NOT NULL, DEFAULT now | 更新时间 |
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 用户唯一主键 ID |
+| `username` | `String` | Unique, Index, Not Null | — | 登录账号名称 |
+| `display_name` | `String` | Not Null | — | 员工姓名，界面展示用 |
+| `role_label` | `String` | — | `""` | 角色/工种标签（如“车间工人”、“设计师”） |
+| `password_hash` | `String` | Not Null | — | bcrypt 对密码哈希加密后的字符串 |
+| `is_admin` | `Integer` | — | `0` | 是否超级管理员 (1=是, 0=否) |
+| `is_active` | `Integer` | — | `1` | 账号状态 (1=启用, 0=禁用停用) |
+| `created_at` | `DateTime` | — | `func.now()` | 账号创建时间 |
+| `updated_at` | `DateTime` | — | `func.now()` | 账号最近更新时间 |
 
- `contact_methods` 替代了旧的 contact/phone/wechat/email 固定字段。支持的 type 包括: 联系人、电话、微信、QQ、邮箱、传真（可扩展）。
+---
 
- ### orders — 订单
+### 2. page_permissions — 页面与操作权限表
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | order_no | TEXT | NOT NULL, UNIQUE | 订单编号 |
- | product_name | TEXT | NOT NULL | 产品名称 |
- | customer_name | TEXT | DEFAULT '' | 客户名称（旧字段，现在通过 customer_id 关联） |
- | priority | INTEGER | NOT NULL, DEFAULT 0 | 优先级 |
- | status | TEXT | NOT NULL, DEFAULT 'draft' | 状态，由工序引擎驱动 |
- | current_step_id | INTEGER | NULLABLE | 当前正在进行的步骤 ID |
- | shipment_date | TEXT | NULLABLE | 发货日期 |
- | notes | TEXT | DEFAULT '' | 备注 |
- | customer_id | INTEGER | FK→customers(id) ON DELETE SET NULL | 关联客户 |
- | created_by | INTEGER | FK→users(id) ON DELETE SET NULL | 创建人 |
- | created_at | TEXT | NOT NULL, DEFAULT now | 创建时间 |
- | updated_at | TEXT | NOT NULL, DEFAULT now | 更新时间 |
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 主键 ID |
+| `user_id` | `Integer` | FK $\to$ `users.id` (CASCADE) | — | 关联的用户 ID |
+| `page_key` | `String` | Not Null | — | 页面路由唯一标识键 (如 `orders`, `drawings` 等) |
+| `can_view` | `Integer` | — | `0` | 该页面是否可见 (1=可见, 0=不可见) |
+| `can_edit` | `Integer` | — | `0` | 该页面是否可增删改编辑 (1=可编辑, 0=只读) |
 
- 状态值: `draft` → `{步骤名}进行中` → ... → `completed` / `paused` / `aborted`
+> 唯一性联合索引约束：`Unique(user_id, page_key)` 确保每个用户对于同一个模块仅拥有一条权限规则。
 
- ### process_flows — 工艺流程
+---
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | name | TEXT | NOT NULL | 流程名称 |
- | description | TEXT | DEFAULT '' | 描述 |
- | is_template | INTEGER | NOT NULL, DEFAULT 0 | 1=工艺模板, 0=订单实例 |
- | order_id | INTEGER | NULLABLE | 关联的订单 ID（实例专用） |
- | created_at | TEXT | NOT NULL, DEFAULT now | 创建时间 |
- | updated_at | TEXT | NOT NULL, DEFAULT now | 更新时间 |
+### 3. customers — 客户档案表
 
- 模板 (is_template=1) 在创建订单时通过 `copyFlowToOrder` 复制为实例 (is_template=0)。
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 客户唯一主键 ID |
+| `name` | `String` | Not Null | — | 客户名称（如“捷温科技”） |
+| `address` | `String` | — | `""` | 客户公司地址 |
+| `notes` | `String` | — | `""` | 客户备注信息 |
+| `contact_methods` | `JSON` | — | `[]` | 动态联系方式列表：`[{"type": "电话", "value": "138..."}, ...]` |
+| `created_at` | `DateTime` | — | `func.now()` | 档案创建时间 |
+| `updated_at` | `DateTime` | — | `func.now()` | 最近修改时间 |
 
- ### process_steps — 工序步骤
+* 注：`contact`、`phone`、`wechat`、`email` 等废弃字段在表结构中暂时保留为空字符，业务逻辑已全部迁移至 JSON 格式的 `contact_methods` 数组。
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | flow_id | INTEGER | FK→process_flows(id) ON DELETE CASCADE | 所属流程 |
- | name | TEXT | NOT NULL | 步骤名称 |
- | seq | INTEGER | NOT NULL, DEFAULT 0 | 顺序号 |
- | required | INTEGER | NOT NULL, DEFAULT 1 | 是否必做 (0/1) |
- | can_parallel | INTEGER | NOT NULL, DEFAULT 0 | 是否可并行 (0/1) |
- | depends_on_step_id | INTEGER | NULLABLE | 依赖的前置步骤 ID |
- | outsourced | INTEGER | NOT NULL, DEFAULT 0 | 是否外协 (0/1) |
- | vendor_id | INTEGER | NULLABLE | 外协厂商 ID |
- | sent_date | TEXT | NULLABLE | 外协发送日期 |
- | return_date | TEXT | NULLABLE | 外协返回日期 |
- | cost | REAL | NULLABLE | 外协费用 |
- | assignee | TEXT | DEFAULT '' | 指定执行人 (username) |
- | completion_condition | TEXT | NOT NULL, DEFAULT 'manual' | 完成条件 (当前仅 'manual') |
- | status | TEXT | NOT NULL, DEFAULT 'pending' | pending/in_progress/completed/skipped |
- | started_at | TEXT | NULLABLE | 开始时间 |
- | completed_at | TEXT | NULLABLE | 完成时间 |
- | completed_by | INTEGER | FK→users(id) ON DELETE SET NULL | 完成人 |
+---
 
- ### documents — 图纸文件
+### 4. orders — 生产订单表
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | order_id | INTEGER | FK→orders(id) ON DELETE CASCADE | 所属订单 |
- | filename | TEXT | NOT NULL | 存储文件名 (如 `v1737000000-drawing.png`) |
- | original_name | TEXT | NOT NULL | 原始文件名 |
- | category | TEXT | NOT NULL, DEFAULT '图纸' | 分类 |
- | version | INTEGER | NOT NULL, DEFAULT 1 | 版本号（自增） |
- | status | TEXT | NOT NULL, DEFAULT 'active' | active/pending/deprecated |
- | file_path | TEXT | NOT NULL | 磁盘完整路径 |
- | file_size | INTEGER | DEFAULT 0 | 文件大小 (bytes) |
- | mime_type | TEXT | DEFAULT '' | MIME 类型 |
- | title | TEXT | DEFAULT '' | 可编辑标题 |
- | description | TEXT | DEFAULT '' | 可编辑描述 |
- | uploaded_by | INTEGER | FK→users(id) ON DELETE SET NULL | 上传人 |
- | created_at | TEXT | NOT NULL, DEFAULT now | 上传时间 |
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 订单唯一主键 ID |
+| `order_no` | `String` | Unique, Index, Not Null | — | 生产订单编号（如 `ORD-2026-0001`） |
+| `product_name` | `String` | Not Null | — | 对应热流道产品的规格或名称 |
+| `customer_id` | `Integer` | FK $\to$ `customers.id` (SET NULL) | — | 关联的客户 ID（允许为空） |
+| `customer_name` | `String` | — | `""` | 客户名称静态备份（用于兼容性过渡） |
+| `priority` | `Integer` | — | `0` | 订单优先级数值（数值越大越紧急） |
+| `status` | `String` | — | `"in_progress"` | 订单运行状态，由工序引擎实时修改 |
+| `current_step_id` | `Integer` | — | — | 当前正在进行或刚结束的工序步骤 ID |
+| `shipment_date` | `DateTime` | — | — | 预期发货日期时间 |
+| `notes` | `String` | — | `""` | 订单的特殊要求备注 |
+| `created_by` | `Integer` | FK $\to$ `users.id` (SET NULL) | — | 订单创建人 ID |
+| `inventory_deducted`| `Integer` | — | `0` | 库存物理出库扣减标记 (0=未扣减, 1=已物理出库) |
+| `created_at` | `DateTime` | — | `func.now()` | 订单录入时间 |
+| `updated_at` | `DateTime` | — | `func.now()` | 订单最近变更时间 |
 
- 版本管理：上传同分类文件时旧版本自动标为 deprecated。
+---
 
- ### inventory_items — 库存物料
+### 5. process_flows — 工艺流程/模板表
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | name | TEXT | NOT NULL | 物料名称 |
- | spec | TEXT | DEFAULT '' | 规格型号 |
- | total | INTEGER | NOT NULL, DEFAULT 0 | 总库存量 |
- | reserved | INTEGER | NOT NULL, DEFAULT 0 | 已预留量 |
- | unit | TEXT | DEFAULT '件' | 单位 |
- | alert_threshold | INTEGER | DEFAULT 5 | 预警阈值 |
- | created_at | TEXT | NOT NULL, DEFAULT now | 创建时间 |
- | updated_at | TEXT | NOT NULL, DEFAULT now | 更新时间 |
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 流程唯一主键 ID |
+| `name` | `String` | Not Null | — | 流程/模板名称 |
+| `description` | `String` | — | `""` | 流程描述 |
+| `is_template` | `Integer` | — | `0` | 是否为模板 (1=工艺流模板, 0=被绑定给具体订单的流转实例) |
+| `order_id` | `Integer` | — | — | 绑定的订单 ID（仅当 `is_template=0` 时生效） |
+| `created_at` | `DateTime` | — | `func.now()` | 创建时间 |
+| `updated_at` | `DateTime` | — | `func.now()` | 修改时间 |
 
- 可用库存 = total - reserved。预留通过 inventory_reservations 表管理。
+---
 
- ### inventory_reservations — 库存预留
+### 6. process_steps — 工序步骤明细表
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | item_id | INTEGER | FK→inventory_items(id) ON DELETE CASCADE | 物料 |
- | order_id | INTEGER | FK→orders(id) ON DELETE CASCADE | 订单 |
- | quantity | INTEGER | NOT NULL, DEFAULT 0 | 预留数量 |
- | created_at | TEXT | NOT NULL, DEFAULT now | 创建时间 |
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 步骤唯一主键 ID |
+| `flow_id` | `Integer` | FK $\to$ `process_flows.id` (CASCADE)| — | 所属工艺流程的 ID |
+| `name` | `String` | Not Null | — | 工序名称（如“热流道排板”、“发黑处理”） |
+| `seq` | `Integer` | — | `0` | 工序排列顺序号，数值越小排越前 |
+| `required` | `Integer` | — | `1` | 是否必做工序 (1=必做不能跳过, 0=选做可跳过) |
+| `outsourced` | `Integer` | — | `0` | 是否外协外委工序 (1=外协, 0=车间内制) |
+| `vendor_id` | `Integer` | — | — | 承接外协的厂商 ID (关联 `vendors.id`) |
+| `sent_date` | `DateTime` | — | — | 发送外协的日期时间 |
+| `return_date` | `DateTime` | — | — | 外协送回的日期时间 |
+| `cost` | `Float` | — | — | 外协加工所花费的实际金额费用 |
+| `assignee` | `String` | — | `""` | 工序负责人账号的用户名 (`username`) |
+| `completion_condition`| `String` | — | `"manual"` | 完工判定逻辑条件 (`manual`=直接点确认, `photo`=必须拍照) |
+| `status` | `String` | — | `"pending"` | 当前工序状态 (`pending`/`completed`/`skipped`) |
+| `started_at` | `DateTime` | — | — | 工序开启时间 |
+| `completed_at` | `DateTime` | — | — | 确认完工的时间（精确到秒） |
+| `completed_by` | `Integer` | FK $\to$ `users.id` (SET NULL) | — | 完工点击人/确认人 ID |
 
- ### notifications — 通知
+* 注：已废弃 legacy 字段 `can_parallel`（并行步骤）与 `depends_on_step_id`（前置依赖）已被物理移除，系统改用纯线性 `seq` 序列引擎。
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | from_user_id | INTEGER | FK→users(id) ON DELETE SET NULL | 发送人 |
- | to_user_id | INTEGER | FK→users(id) ON DELETE CASCADE | 接收人 |
- | title | TEXT | NOT NULL | 标题 |
- | body | TEXT | DEFAULT '' | 正文 |
- | source | TEXT | NOT NULL, DEFAULT 'manual' | 来源 (manual/auto) |
- | link | TEXT | DEFAULT '' | 跳转链接 |
- | is_read | INTEGER | NOT NULL, DEFAULT 0 | 已读 (0/1) |
- | created_at | TEXT | NOT NULL, DEFAULT now | 创建时间 |
+---
 
- ### notification_rules — 自动通知规则
+### 7. documents — 图纸文件与照片表
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | name | TEXT | NOT NULL | 规则名称 |
- | event | TEXT | NOT NULL | 触发事件 |
- | condition_field | TEXT | DEFAULT '' | 条件字段 |
- | condition_op | TEXT | DEFAULT 'lt' | 条件运算符 (lt/gt/eq) |
- | condition_value | TEXT | DEFAULT '' | 条件值 |
- | notify_role | TEXT | DEFAULT '' | 通知角色 |
- | title_template | TEXT | NOT NULL | 标题模板 |
- | body_template | TEXT | DEFAULT '' | 正文模板 |
- | is_active | INTEGER | NOT NULL, DEFAULT 1 | 启用 (0/1) |
- | created_at | TEXT | NOT NULL, DEFAULT now | 创建时间 |
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 图纸附件唯一主键 ID |
+| `order_id` | `Integer` | FK $\to$ `orders.id` (CASCADE) | — | 所属订单 ID |
+| `step_id` | `Integer` | FK $\to$ `process_steps.id` (CASCADE) | — | 上传关联的工序步骤 ID（如果为工序实操拍照） |
+| `filename` | `String` | Not Null | — | 落盘在服务器的文件名（含时间戳前缀防止覆盖） |
+| `original_name` | `String` | Not Null | — | 文件上传前的原始中文名称 |
+| `category` | `String` | — | `"图纸"` | 分类（如“2D图”、“3D图”、“工艺文件”、“工序拍照”） |
+| `version` | `Integer` | — | `1` | 该订单下同分类图纸的版本序列号 |
+| `status` | `String` | — | `"active"` | 生命周期状态 (`active`=生效最新版, `deprecated`=历史废弃版本) |
+| `file_path` | `String` | Not Null | — | 服务器保存的绝对路径路径 |
+| `file_size` | `Integer` | — | `0` | 文件体积字节数 (bytes) |
+| `mime_type` | `String` | — | `""` | 媒体文件类型 |
+| `title` | `String` | — | `""` | 附件标题 |
+| `description` | `String` | — | `""` | 附件详细描述 |
+| `uploaded_by` | `Integer` | FK $\to$ `users.id` (SET NULL) | — | 上传操作人 ID |
+| `created_at` | `DateTime` | — | `func.now()` | 文件上传时间 |
 
- **注意:** 自动规则引擎的定时检查尚未实现，目前规则只能通过 API 管理。
+---
 
- ### vendors — 外协厂商
+### 8. inventory_items — 库存物料明细表
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | name | TEXT | NOT NULL | 厂商名称 |
- | contact | TEXT | DEFAULT '' | 联系人 |
- | phone | TEXT | DEFAULT '' | 电话 |
- | address | TEXT | DEFAULT '' | 地址 |
- | notes | TEXT | DEFAULT '' | 备注 |
- | created_at | TEXT | NOT NULL, DEFAULT now | 创建时间 |
- | updated_at | TEXT | NOT NULL, DEFAULT now | 更新时间 |
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 库存商品唯一主键 ID |
+| `name` | `String` | Not Null | — | 零配件/物料名称（如“温控卡”） |
+| `spec` | `String` | — | `""` | 规格尺寸或型号描述 |
+| `total` | `Integer` | — | `0` | 物理库房的总实际在库数量 |
+| `reserved` | `Integer` | — | `0` | 被各生产订单已锁定的预留锁定数量 |
+| `unit` | `String` | — | `"件"` | 计量单位（个、件、米等） |
+| `alert_threshold` | `Integer` | — | `5` | 库存低水位报警阈值 |
+| `created_at` | `DateTime` | — | `func.now()` | 创建时间 |
+| `updated_at` | `DateTime` | — | `func.now()` | 信息更新时间 |
 
- ### system_settings — 系统参数
+---
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | key | TEXT | NOT NULL, UNIQUE | 参数键 |
- | value | TEXT | NOT NULL | 参数值 |
- | category | TEXT | DEFAULT 'general' | 分类 |
- | updated_at | TEXT | NOT NULL, DEFAULT now | 更新时间 |
+### 9. inventory_reservations — 订单物料预留映射表
 
- ### audit_logs — 操作日志
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 主键 ID |
+| `item_id` | `Integer` | FK $\to$ `inventory_items.id` (CASCADE) | — | 锁定的物料 ID |
+| `order_id` | `Integer` | FK $\to$ `orders.id` (CASCADE) | — | 分配至哪笔生产订单 ID |
+| `quantity` | `Integer` | — | `0` | 锁定预留的物理数量 |
+| `created_at` | `DateTime` | — | `func.now()` | 预留事务生成时间 |
 
- | 列名 | 类型 | 约束 | 说明 |
- |------|------|------|------|
- | id | INTEGER | PK, AUTOINCREMENT | 主键 |
- | user_id | INTEGER | FK→users(id) ON DELETE SET NULL | 操作人 |
- | action | TEXT | NOT NULL | 操作类型 |
- | entity_type | TEXT | NOT NULL | 实体类型 |
- | entity_id | INTEGER | NULLABLE | 实体 ID |
- | detail | TEXT | DEFAULT '' | 详情 (HTTP method + URL) |
- | created_at | TEXT | NOT NULL, DEFAULT now | 操作时间 |
+---
 
- **注意:** audit_logs 中间件 (`audit.js`) 已编写但尚未集成到路由中。
+### 10. notifications — 站内消息通知表
 
-## 相关文档
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 主键 ID |
+| `from_user_id` | `Integer` | FK $\to$ `users.id` (SET NULL) | — | 触发或发送通知的用户 ID（为空表明系统自动派发） |
+| `to_user_id` | `Integer` | FK $\to$ `users.id` (CASCADE)| — | 消息接收人 ID |
+| `title` | `String` | Not Null | — | 通知的标题 |
+| `body` | `String` | — | `""` | 通知的详细文字内容 |
+| `source` | `String` | — | `"manual"` | 来源类别 (`manual`=用户手动发, `auto`=警报引擎触发) |
+| `link` | `String` | — | `""` | 点击通知可跳转的前端具体页面路径 |
+| `is_read` | `Integer` | — | `0` | 已读标记 (0=未读, 1=已读) |
+| `created_at` | `DateTime` | — | `func.now()` | 消息派发时间 |
 
-- [API 参考](reference-api.md) — 对应每个表的 CRUD 接口
-- [系统架构](explanation-architecture.md) — 数据层在整体架构中的位置
-- [配置文件](reference-configuration.md) — Knex 和数据库路径配置
+---
+
+### 11. notification_rules — 自动警报配置表
+
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 规则唯一主键 ID |
+| `name` | `String` | Not Null | — | 警报规则名称 |
+| `event` | `String` | Not Null | — | 判定事件触发源（如 `inventory_alert`） |
+| `condition_field`| `String` | — | `""` | 比较字段名（如 `available` 字段） |
+| `condition_op` | `String` | — | `"lt"` | 逻辑操作符 (`eq`/`lt`/`gt`/`contains` 等) |
+| `condition_value`| `String` | — | `""` | 判定水位阈值界限 |
+| `notify_role` | `String` | — | `""` | 接收消息的对应系统角色 |
+| `title_template` | `String` | Not Null | — | 自动派发消息标题模板 |
+| `body_template` | `String` | — | `""` | 自动派发消息正文模板（可支持花括号插值） |
+| `is_active` | `Integer` | — | `1` | 规则是否开启生效中 (1=启用, 0=挂起禁用) |
+| `created_at` | `DateTime` | — | `func.now()` | 规则创建时间 |
+
+---
+
+### 12. vendors — 外协加工商表
+
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 加工商唯一主键 ID |
+| `name` | `String` | Not Null | — | 外协单位名称（如“大昌精机厂”） |
+| `contact` | `String` | — | `""` | 联系人姓名备份 |
+| `phone` | `String` | — | `""` | 联系人电话备份 |
+| `address` | `String` | — | `""` | 物理厂房寄送地址 |
+| `notes` | `String` | — | `""` | 备注资质信息 |
+| `contact_methods` | `JSON` | — | `[]` | 动态多联系方式数组，结构与客户相同 |
+| `created_at` | `DateTime` | — | `func.now()` | 厂商录入时间 |
+| `updated_at` | `DateTime` | — | `func.now()` | 资料修改时间 |
+
+---
+
+### 13. system_settings — 系统设置配置表
+
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 主键 ID |
+| `key` | `String` | Unique, Not Null| — | 系统配置属性键 (如 `system_theme` 等) |
+| `value` | `String` | Not Null | — | 配置项的具体存储属性值 |
+| `category` | `String` | — | `"general"` | 设置分类 |
+| `updated_at` | `DateTime` | — | `func.now()` | 最近保存修改时间 |
+
+---
+
+### 14. audit_logs — 全局操作审计日志表
+
+| 列名 | 数据类型 | 约束 | 默认值 | 详细说明 |
+|:---|:---|:---|:---|:---|
+| `id` | `Integer` | PK, Index | 自增 | 审计记录唯一主键 ID |
+| `user_id` | `Integer` | FK $\to$ `users.id` (SET NULL) | — | 进行该敏感写入操作的系统账号 ID |
+| `action` | `String` | Not Null | — | 动作类别 (`create`/`update`/`delete`) |
+| `entity_type` | `String` | Not Null | — | 操作更改的数据类型（如 `orders`, `inventory`） |
+| `entity_id` | `Integer` | — | — | 被更改数据的实体 ID |
+| `detail` | `String` | — | `""` | 汉化后的友好操作细节陈述（如：*确认完成了订单「ORD-XX」的「设计」工序*） |
+| `created_at` | `DateTime` | — | `func.now()` | 操作发生时服务器记录的精确时刻（精确到秒） |

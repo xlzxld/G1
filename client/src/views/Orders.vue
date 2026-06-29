@@ -5,7 +5,7 @@
         <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">订单管理</h2>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">生产订单调度与跟踪</p>
       </div>
-      <el-button v-if="auth.canEdit('orders')" type="primary" @click="openCreate" color="#7aa2f7" dark><el-icon><Plus /></el-icon> 新建订单</el-button>
+      <el-button v-if="auth.canEdit('orders')" type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新建订单</el-button>
     </div>
 
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-md">
@@ -16,7 +16,7 @@
       <el-select v-model="params.priority" placeholder="优先级" clearable style="width:120px">
         <el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" />
       </el-select>
-      <el-button type="primary" @click="search" color="#7aa2f7" dark>搜索</el-button>
+      <el-button type="primary" @click="search">搜索</el-button>
       <el-button @click="reset" plain>重置</el-button>
     </div>
     
@@ -146,10 +146,11 @@ onMounted(async () => {
   if (route.query.highlight) {
     const targetId = parseInt(route.query.highlight);
     highlightedId.value = targetId;
+    // 先定位分页，再加载数据
     await locateOrderPage(targetId);
   }
   
-  fetchOrders(); 
+  await fetchOrders();
   fetchTemplates(); 
   fetchCustomers(); 
 });
@@ -159,7 +160,7 @@ watch(() => route.query.highlight, async (newVal) => {
     const targetId = parseInt(newVal);
     highlightedId.value = targetId;
     await locateOrderPage(targetId);
-    fetchOrders();
+    await fetchOrders();
   } else {
     highlightedId.value = null;
   }
@@ -193,19 +194,15 @@ async function fetchOrders() {
     
     if (highlightedId.value) {
       await nextTick();
-      let attempts = 0;
-      const scrollInterval = setInterval(() => {
-        const el = document.querySelector('.highlight-flash-row');
-        attempts++;
-        if (el) {
-          clearInterval(scrollInterval);
-          setTimeout(() => {
+      // 用 requestAnimationFrame 确保 DOM 完全渲染后再滞动
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const el = document.querySelector('.highlight-flash-row');
+          if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 100);
-        } else if (attempts >= 20) {
-          clearInterval(scrollInterval);
-        }
-      }, 100);
+          }
+        });
+      });
     }
   }
   catch {} finally { loading.value = false; }
@@ -302,19 +299,20 @@ function formatDateTime(val) {
 <style scoped>
 .search-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0; }
 
-@keyframes row-flash {
+/* 用 inset box-shadow 模拟背景色闪烁，避开 el-table CSS 变量对 background-color 的覆盖 */
+:global(@keyframes row-flash) {
   0%, 100% {
-    background-color: transparent;
+    box-shadow: inset 0 0 0 2000px transparent;
   }
   25%, 75% {
-    background-color: rgba(64, 158, 255, 0.25);
+    box-shadow: inset 0 0 0 2000px rgba(64, 158, 255, 0.22), 0 0 8px rgba(64, 158, 255, 0.2);
   }
 }
 :deep(.el-table tbody tr.highlight-flash-row) {
   --el-table-tr-bg-color: transparent !important;
 }
 :deep(.el-table tbody tr.highlight-flash-row td.el-table__cell) {
-  animation: row-flash 1.5s ease-in-out 3;
+  animation: row-flash 1.2s ease-in-out 3;
   border-bottom: 2px solid rgba(64, 158, 255, 0.5) !important;
   border-top: 2px solid rgba(64, 158, 255, 0.5) !important;
 }

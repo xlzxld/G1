@@ -2,7 +2,7 @@
   <div class="flex flex-col h-full bg-white dark:bg-industrial-800">
     <!-- Logo Area -->
     <div class="flex items-center justify-center h-16 border-b border-slate-200 dark:border-industrial-border shrink-0">
-      <span v-if="!collapsed" class="text-slate-800 dark:text-slate-100 font-bold tracking-widest">汇易通热流道管理系统</span>
+      <span v-if="!collapsed" class="text-slate-800 dark:text-slate-100 font-bold tracking-widest whitespace-nowrap overflow-hidden">汇易通热流道管理系统</span>
       <span v-else class="text-blue-500 dark:text-industrial-accent font-bold text-xl">M</span>
       
       <!-- Mobile Close Button -->
@@ -27,6 +27,31 @@
           <template #title>{{ item.label }}</template>
         </el-menu-item>
       </el-menu>
+    </div>
+
+    <!-- Bottom User Greeting Profile Panel -->
+    <div class="border-t border-slate-200 dark:border-industrial-border p-4 shrink-0 bg-slate-50/50 dark:bg-industrial-900/10">
+      <div v-if="!collapsed" class="flex items-center gap-3">
+        <!-- Avatar/Initials Circle -->
+        <div class="w-9 h-9 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold shadow-sm shrink-0 uppercase select-none">
+          {{ auth.user?.display_name?.slice(0, 1) || auth.user?.username?.slice(0, 1) || 'U' }}
+        </div>
+        <!-- Text & Greeting -->
+        <div class="flex flex-col min-w-0">
+          <span class="text-[10px] text-slate-400 dark:text-slate-500 font-semibold tracking-wider uppercase truncate">{{ auth.user?.role_label || '用户' }}</span>
+          <span class="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate mt-0.5" :title="`${auth.user?.display_name || auth.user?.username}，${greetingText}`">
+            {{ auth.user?.display_name || auth.user?.username }}，{{ greetingText }}
+          </span>
+        </div>
+      </div>
+      <div v-else class="flex justify-center">
+        <!-- Minimalist Avatar when collapsed -->
+        <el-tooltip :content="`${auth.user?.display_name || auth.user?.username}，${greetingText}`" placement="right">
+          <div class="w-9 h-9 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold shadow-sm shrink-0 uppercase cursor-pointer select-none">
+            {{ auth.user?.display_name?.slice(0, 1) || auth.user?.username?.slice(0, 1) || 'U' }}
+          </div>
+        </el-tooltip>
+      </div>
     </div>
   </div>
 </template>
@@ -61,6 +86,17 @@ const visibleItems = computed(() =>
     return auth.canView(item.page);
   })
 );
+
+// 根据时间自动返回问候词
+const greetingText = computed(() => {
+  const hr = new Date().getHours();
+  if (hr >= 0 && hr < 6) return '凌晨好';
+  if (hr >= 6 && hr < 9) return '早上好';
+  if (hr >= 9 && hr < 11) return '上午好';
+  if (hr >= 11 && hr < 13) return '中午好';
+  if (hr >= 13 && hr < 18) return '下午好';
+  return '晚上好';
+});
 </script>
 
 <style scoped>

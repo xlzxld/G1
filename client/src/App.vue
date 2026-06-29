@@ -1,6 +1,6 @@
 <template>
   <router-view v-if="$route.meta.guest" />
-  <div v-else class="flex h-screen bg-industrial-900 overflow-hidden relative">
+  <div v-else class="flex h-[100dvh] bg-slate-50 dark:bg-industrial-900 overflow-hidden relative">
     
     <!-- Mobile Overlay -->
     <div 
@@ -150,6 +150,21 @@ let poller = null;
 
 onMounted(() => {
   isDark.value = document.documentElement.classList.contains('dark');
+  updateThemeColor(isDark.value);
+
+  // 监听系统主题变化
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!localStorage.getItem('theme')) {
+      const sysDark = e.matches;
+      isDark.value = sysDark;
+      if (sysDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      updateThemeColor(sysDark);
+    }
+  });
 });
 
 // Watch token to start/stop polling
@@ -173,6 +188,16 @@ onUnmounted(() => {
   if (poller) clearInterval(poller);
 });
 
+function updateThemeColor(isDarkTheme) {
+  let meta = document.querySelector('meta[name="theme-color"]:not([media])');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.setAttribute('name', 'theme-color');
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute('content', isDarkTheme ? '#1a1b26' : '#ffffff');
+}
+
 function toggleTheme(val) {
   isDark.value = val;
   if (val) {
@@ -182,6 +207,7 @@ function toggleTheme(val) {
     document.documentElement.classList.remove('dark');
     localStorage.setItem('theme', 'light');
   }
+  updateThemeColor(val);
 }
 
 // Close mobile sidebar on route change

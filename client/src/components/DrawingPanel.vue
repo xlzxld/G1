@@ -116,23 +116,24 @@
           <div
             v-for="doc in currentEngineeringDocs"
             :key="doc.id"
-            class="flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors"
+            class="flex flex-col sm:flex-row gap-3 sm:items-center justify-between px-4 py-3 rounded-xl border transition-colors"
             :class="doc.status === 'active'
               ? 'border-blue-200 dark:border-industrial-accent/40 bg-blue-50/50 dark:bg-industrial-accent/5'
               : 'border-slate-200 dark:border-industrial-700 bg-slate-50 dark:bg-industrial-900/40 opacity-60'"
           >
-            <!-- 文件图标 -->
-            <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold uppercase"
-              :class="fileIconClass(doc.original_name)">
-              {{ fileExt(doc.original_name) }}
-            </div>
+            <div class="flex items-center gap-3 w-full sm:w-auto flex-1 min-w-0">
+              <!-- 文件图标 -->
+              <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold uppercase"
+                :class="fileIconClass(doc.original_name)">
+                {{ fileExt(doc.original_name) }}
+              </div>
 
-            <!-- 文件信息 -->
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-medium text-sm text-slate-800 dark:text-slate-200 truncate max-w-xs">
-                  {{ doc.title || doc.original_name }}
-                </span>
+              <!-- 文件信息 -->
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-medium text-sm text-slate-800 dark:text-slate-200 truncate max-w-xs">
+                    {{ doc.title || doc.original_name }}
+                  </span>
                 <!-- 版本号标签 -->
                 <span class="px-2 py-0.5 rounded text-[10px] font-bold border"
                   :class="doc.status === 'active'
@@ -152,22 +153,23 @@
                   · 描述: {{ doc.description }}
                 </span>
               </div>
+              </div>
             </div>
 
             <!-- 操作按钮 -->
-            <div class="flex items-center gap-1.5 flex-shrink-0">
+            <div class="flex items-center justify-end sm:justify-start gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto flex-shrink-0 mt-1 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-industrial-700/50">
               <a :href="getDocUrl(doc)" :download="doc.original_name" target="_blank">
-                <el-button size="small" plain>
+                <el-button size="small" plain class="min-h-[36px] sm:min-h-0">
                   <el-icon><Download /></el-icon>
                 </el-button>
               </a>
-              <el-button v-if="canEdit" size="small" plain @click="openEdit(doc)">
+              <el-button v-if="canEdit" size="small" plain @click="openEdit(doc)" class="min-h-[36px] sm:min-h-0">
                 <el-icon><Edit /></el-icon>
               </el-button>
-              <el-button v-if="canEdit && doc.status !== 'active'" size="small" type="primary" plain @click="setActive(doc)">
+              <el-button v-if="canEdit && doc.status !== 'active'" size="small" type="primary" plain @click="setActive(doc)" class="min-h-[36px] sm:min-h-0">
                 激活
               </el-button>
-              <el-button v-if="canEdit" size="small" type="danger" plain @click="confirmDelete(doc)">
+              <el-button v-if="canEdit" size="small" type="danger" plain @click="confirmDelete(doc)" class="min-h-[36px] sm:min-h-0">
                 <el-icon><Delete /></el-icon>
               </el-button>
             </div>

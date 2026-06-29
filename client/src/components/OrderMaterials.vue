@@ -20,15 +20,17 @@
     </div>
 
     <!-- Materials list -->
-    <div class="mt-2 flex-1">
+    <!-- Materials list -->
+    <div class="mt-2 flex-1 overflow-auto max-h-[220px]">
+      <!-- PC Table View -->
       <el-table
+        v-if="!isMobile"
         :data="materials"
         border
         stripe
         size="small"
         empty-text="暂无用料数据"
         class="w-full"
-        max-height="220"
       >
         <el-table-column prop="item_name" label="配件名称" min-width="120" show-overflow-tooltip />
         <el-table-column prop="spec" label="规格" min-width="100" show-overflow-tooltip />
@@ -53,6 +55,36 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- Mobile Card View -->
+      <div v-else class="space-y-3 pb-2">
+        <div v-if="materials.length === 0" class="text-center text-slate-400 text-xs py-4">暂无用料数据</div>
+        <div 
+          v-for="row in materials" 
+          :key="row.id" 
+          class="bg-slate-50 dark:bg-industrial-900/50 border border-slate-200 dark:border-industrial-700 rounded-lg p-3 flex justify-between items-center"
+        >
+          <div class="flex flex-col gap-1 overflow-hidden pr-2">
+            <span class="font-bold text-slate-800 dark:text-slate-200 text-sm truncate">{{ row.item_name }}</span>
+            <span class="text-xs text-slate-500 truncate">{{ row.spec || '无规格' }}</span>
+          </div>
+          <div class="flex items-center gap-4 shrink-0">
+            <div class="text-right">
+              <span class="font-semibold text-blue-600 dark:text-blue-400 text-lg">{{ row.quantity }}</span>
+              <span class="text-xs text-slate-500 ml-1">{{ row.unit }}</span>
+            </div>
+            <el-button
+              v-if="!isCompleted"
+              type="danger"
+              icon="Delete"
+              circle
+              plain
+              class="shrink-0 min-h-[36px] min-w-[36px]"
+              @click="confirmDelete(row)"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Summary / Info -->
@@ -126,7 +158,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Box, Plus, SuccessFilled } from '@element-plus/icons-vue';
 import api from '../api/index.js';
@@ -148,10 +180,19 @@ const form = ref({
 
 const isCompleted = computed(() => props.orderStatus === 'completed');
 
+const isMobile = ref(false);
+const checkMobile = () => { isMobile.value = window.innerWidth <= 768; };
+
 // Load initial data
 onMounted(() => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
   fetchMaterials();
   fetchInventory();
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile);
 });
 
 // Watch orderStatus change to refetch data
