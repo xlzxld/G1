@@ -9,11 +9,11 @@
     </div>
 
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-md">
-      <el-input v-model="params.keyword" placeholder="搜索订单号/产品/客户" clearable class="w-full sm:w-60" @keyup.enter="search" />
-      <el-select v-model="params.status" placeholder="状态" clearable class="w-full sm:w-36">
+      <el-input v-model="params.keyword" placeholder="搜索订单号/产品/客户" clearable class="w-full sm:w-60" @input="debouncedSearch" @keyup.enter="search" />
+      <el-select v-model="params.status" placeholder="状态" clearable class="w-full sm:w-36" @change="search">
         <el-option label="进行中" value="in_progress" /><el-option label="已完成" value="completed" /><el-option label="暂停" value="paused" />
       </el-select>
-      <el-select v-model="params.priority" placeholder="优先级" clearable class="w-full sm:w-28">
+      <el-select v-model="params.priority" placeholder="优先级" clearable class="w-full sm:w-28" @change="search">
         <el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" />
       </el-select>
       <div class="flex gap-2 w-full sm:w-auto">
@@ -149,6 +149,7 @@ import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
 import { useAuthStore } from '../stores/auth.js';
+import { debounce } from '../utils/debounce.js';
 
 defineOptions({ name: 'Orders' });
 
@@ -174,6 +175,8 @@ const customers = ref([]);
 const params = reactive({ keyword: '', status: '', priority: '', sort_by: 'created_at', sort_order: 'desc', page: 1, limit: 20 });
 const newOrder = reactive({ order_no: '', product_name: '', customer_id: null, template_flow_id: null, priority: 0, shipment_date: '', notes: '' });
 
+const debouncedSearch = debounce(search, 300);
+
 const formRules = {
   order_no: [{ required: true, message: '请输入订单号', trigger: 'blur' }],
   product_name: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
@@ -194,6 +197,8 @@ onActivated(() => {
   // 切回该页面时静默刷新
   if (orders.value.length > 0) {
     fetchOrders(true);
+    fetchCustomers();
+    fetchTemplates();
   }
 });
 

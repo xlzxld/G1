@@ -2,21 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
 
-# Create all tables (in production, use Alembic)
-Base.metadata.create_all(bind=engine)
-
-from sqlalchemy import text
-with engine.connect() as connection:
-    try:
-        connection.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS inventory_deducted INTEGER DEFAULT 0;"))
-        connection.execute(text("ALTER TABLE process_steps DROP COLUMN IF EXISTS can_parallel;"))
-        connection.execute(text("ALTER TABLE process_steps DROP COLUMN IF EXISTS depends_on_step_id;"))
-        connection.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS step_id INTEGER REFERENCES process_steps(id) ON DELETE CASCADE;"))
-        connection.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS contacts JSON DEFAULT '[]';"))
-        connection.execute(text("ALTER TABLE vendors ADD COLUMN IF NOT EXISTS contacts JSON DEFAULT '[]';"))
-        connection.commit()
-    except Exception as e:
-        print(f"Error modifying database: {e}")
+# Database initialization is now managed by Alembic
 
 app = FastAPI(
     title="Hot Runner MES API",
@@ -24,12 +10,13 @@ app = FastAPI(
     version="2.0.0"
 )
 
+import os
+
 # CORS configuration
-origins = [
-    "http://localhost:5173", # Vue Dev server
-    "http://127.0.0.1:5173",
-    "*" # Can be restricted later
-]
+origins_str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+origins = [o.strip() for o in origins_str.split(",") if o.strip()]
+if not origins:
+    origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,15 +26,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-import os
 from fastapi.staticfiles import StaticFiles
 
-os.makedirs("uploads", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Hot Runner MES API (FastAPI)"}
+
+@app.get("/healthz")
+def health_check():
+    return {"ok": True}
 
 from routers import customers, orders, inventory, process, documents, auth, users, dashboard, settings, vendors, notifications
 
@@ -230,15 +221,15 @@ def get_friendly_detail(method: str, path: str, db) -> str:
 
 @app.middleware("http")
 async def audit_log_middleware(request: Request, call_next):
-    method = request.method
-    if method in ["POST", "PUT", "DELETE"]:
+    response = await call_next(request)
+    
+    if request.method in ["POST", "PUT", "DELETE"] and response.status_code < 400:
         path = request.url.path
         if path.startswith("/auth"):
-            return await call_next(request)
+            return response
             
         auth_header = request.headers.get("Authorization", "")
         user_id = None
-        # 支持 Bearer / bearer 大小写不敏感的解析方式
         if auth_header.lower().startswith("bearer "):
             token = auth_header[7:]
             try:
@@ -251,22 +242,8 @@ async def audit_log_middleware(request: Request, call_next):
                 
         db = SessionLocal()
         try:
-            # 如果没拿到 user_id (没有 Token 或 Token 错误)，尝试寻找第一个管理员 ID，以避免关联不存在的 ID 1
-            if not user_id:
-                try:
-                    first_admin = db.query(models.User).filter(models.User.is_admin == 1).order_by(models.User.id).first()
-                    if first_admin:
-                        user_id = first_admin.id
-                    else:
-                        first_user = db.query(models.User).order_by(models.User.id).first()
-                        if first_user:
-                            user_id = first_user.id
-                except Exception:
-                    pass
-                # 仍为空时，如果表里没有任何用户，保留 None，外键设为 NULL 表明“系统/游客”触发
-                
-            action = "create" if method == "POST" else "update" if method == "PUT" else "delete"
-            detail_text = get_friendly_detail(method, path, db)
+            action = "create" if request.method == "POST" else "update" if request.method == "PUT" else "delete"
+            detail_text = get_friendly_detail(request.method, path, db)
             audit = models.AuditLog(
                 user_id=user_id,
                 action=action,
@@ -280,5 +257,4 @@ async def audit_log_middleware(request: Request, call_next):
         finally:
             db.close()
             
-    response = await call_next(request)
     return response

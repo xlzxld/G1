@@ -17,7 +17,7 @@ services:
   backend:
     build:
       context: ./server-python
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     volumes:
       - ./server-python:/app
     ports:
@@ -25,9 +25,9 @@ services:
       - "0.0.0.0:8080:8000"
     environment:
       - DATABASE_URL=postgresql://mes_user:mes_password@db:5432/hotrunner_mes
-      # - VITE_API_BASE_URL=http://192.168.1.10:8080
-      - VITE_API_BASE_URL=http://192.168.5.33:8080
-    # 强制 uvicorn 监听 0.0.0.0，否则默认只绑 127.0.0.1 导致容器外无法访问
+      # 自动从本机的 .env.dev 中读取，如果本机未配置，则默认使用 localhost
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
+      # 强制 uvicorn 监听 0.0.0.0，否则默认只绑 127.0.0.1 导致容器外无法访问
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - db
@@ -36,7 +36,7 @@ services:
   frontend:
     build:
       context: ./client
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     volumes:
       - ./client:/app
       - /app/node_modules
@@ -44,9 +44,9 @@ services:
       # 0.0.0.0 绑定：局域网设备可通过 <宿主机IP>:9956 访问
       - "0.0.0.0:9956:5173"
     environment:
-      # - VITE_API_BASE_URL=http://192.168.1.10:8080
-      - VITE_API_BASE_URL=http://192.168.5.33:8080
-    # --host 0.0.0.0 让 Vite dev server 监听所有网卡，而不是默认的 localhost
+      # 自动从本机的 .env.dev 中读取，供前端打包或运行时使用
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
+      # --host 0.0.0.0 让 Vite dev server 监听所有网卡，而不是默认的 localhost
     command: npx vite --host 0.0.0.0 --port 5173
     depends_on:
       - backend

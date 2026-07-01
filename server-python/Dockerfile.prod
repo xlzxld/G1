@@ -1,0 +1,20 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# 安装必要的系统依赖（例如 PostgreSQL 客户端库依赖）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 先复制并安装依赖以利用缓存
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制整个后端代码
+COPY . .
+
+# 生产环境使用 workers 提升并发，并关闭 reload
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

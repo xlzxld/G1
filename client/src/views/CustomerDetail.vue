@@ -91,7 +91,7 @@
 
         <!-- 搜索与筛选栏 -->
         <div class="bg-slate-50 dark:bg-industrial-900/50 border border-slate-200 dark:border-industrial-border rounded-xl p-4 flex flex-wrap gap-3 items-center">
-          <el-input v-model="searchKeyword" placeholder="搜索订单号/产品" clearable class="w-full sm:w-60" @keyup.enter="handleSearch" />
+          <el-input v-model="searchKeyword" placeholder="搜索订单号/产品" clearable class="w-full sm:w-60" @input="debouncedSearch" @keyup.enter="handleSearch" />
           <el-select v-model="searchStatus" placeholder="状态" clearable class="w-full sm:w-36" @change="handleSearch">
             <el-option label="进行中" value="in_progress" />
             <el-option label="已完成" value="completed" />
@@ -192,6 +192,7 @@ import { ref, reactive, onMounted, onUnmounted, computed, watch, onActivated } f
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '../api/index.js';
+import { debounce } from '../utils/debounce.js';
 
 defineOptions({ name: 'CustomerDetail' });
 
@@ -211,6 +212,8 @@ const searchKeyword = ref('');
 const searchStatus = ref('');
 const searchPriority = ref('');
 const lastLoadedId = ref(null);
+
+const debouncedSearch = debounce(handleSearch, 300);
 
 const isMobile = ref(window.innerWidth < 768);
 function onResize() { isMobile.value = window.innerWidth < 768; }

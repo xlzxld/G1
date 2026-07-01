@@ -94,6 +94,7 @@
             <img
               :src="getDocUrl(doc)"
               :alt="doc.title || doc.original_name"
+              loading="lazy"
               class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
               @error="onImgError($event)"
             />

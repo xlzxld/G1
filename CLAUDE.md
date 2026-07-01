@@ -11,59 +11,59 @@
 ### 1. 启停与容器生命周期
 *   **启动开发环境 (后台)**：
     ```bash
-    docker compose up -d
+    docker compose -f docker-compose.dev.yml up -d
     ```
 *   **启动开发环境 (前台，查看实时日志)**：
     ```bash
-    docker compose up
+    docker compose -f docker-compose.dev.yml up
     ```
 *   **关闭并释放容器**：
     ```bash
-    docker compose down
+    docker compose -f docker-compose.dev.yml down
     ```
 *   **重启所有服务**：
     ```bash
-    docker compose restart
+    docker compose -f docker-compose.dev.yml restart
     ```
 *   **重启特定服务**：
     ```bash
-    docker compose restart backend
-    docker compose restart frontend
+    docker compose -f docker-compose.dev.yml restart backend
+    docker compose -f docker-compose.dev.yml restart frontend
     ```
 *   **更新依赖并强制重新构建镜像**：
     ```bash
-    docker compose up -d --build
+    docker compose -f docker-compose.dev.yml up -d --build
     ```
 
 ### 2. 查看日志与状态
 *   **查看运行状态**：
     ```bash
-    docker compose ps
+    docker compose -f docker-compose.dev.yml ps
     ```
 *   **查看所有服务的滚动日志**：
     ```bash
-    docker compose logs -f
+    docker compose -f docker-compose.dev.yml logs -f
     ```
 *   **查看特定服务的滚动日志**：
     ```bash
-    docker compose logs -f backend
-    docker compose logs -f frontend
+    docker compose -f docker-compose.dev.yml logs -f backend
+    docker compose -f docker-compose.dev.yml logs -f frontend
     ```
 
 ### 3. 数据播种与初始化
 *   **初始化基础用户与系统权限 (必须)**：
     ```bash
-    docker compose exec backend python seed.py
+    docker compose -f docker-compose.dev.yml exec backend python seed.py
     ```
 *   **注入演示模拟业务数据 (可选)**：
     ```bash
-    docker compose exec backend python seed_mock.py
+    docker compose -f docker-compose.dev.yml exec backend python seed_mock.py
     ```
 
 ### 4. 深度重置环境
 *   **清除所有容器及数据库卷 (清除全部数据)**：
     ```bash
-    docker compose down -v
+    docker compose -f docker-compose.dev.yml down -v
     ```
 
 ---

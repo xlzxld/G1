@@ -1,0 +1,23 @@
+:80 {
+    # 静态前端文件目录
+    root * /srv
+    
+    # 开启 gzip 压缩
+    encode gzip
+    
+    # /api/* 反向代理至后端，并剥离 /api 前缀（等同于 Vite 的 rewrite）
+    handle_path /api/* {
+        reverse_proxy backend:8000
+    }
+    
+    # /uploads/* 反向代理至后端，不剥离前缀（FastAPI app.mount 本身挂载在 /uploads）
+    handle /uploads/* {
+        reverse_proxy backend:8000
+    }
+    
+    # 处理 Vue Router 的 History 路由模式，回退到 index.html
+    handle {
+        try_files {path} {path}/ /index.html
+        file_server
+    }
+}

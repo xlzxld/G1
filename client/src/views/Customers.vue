@@ -9,7 +9,7 @@
     </div>
 
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-md">
-      <el-input v-model="keyword" placeholder="搜索客户" clearable class="w-full sm:w-60" @keyup.enter="handleSearch" />
+      <el-input v-model="keyword" placeholder="搜索名称/联系人/电话/微信/邮箱" clearable class="w-full sm:w-80" @input="debouncedSearch" @keyup.enter="handleSearch" />
       <el-button type="primary" @click="handleSearch" class="w-full sm:w-auto">搜索</el-button>
     </div>
     
@@ -141,6 +141,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
 import { useAuthStore } from '../stores/auth.js';
+import { debounce } from '../utils/debounce.js';
 
 defineOptions({ name: 'Customers' });
 
@@ -152,6 +153,9 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
+
+const debouncedSearch = debounce(handleSearch, 300);
+
 const customers = ref([]); const loading = ref(false); const keyword = ref('');
 const formVisible = ref(false); const editing = ref(null); const saving = ref(false);
 const formRef = ref(null);

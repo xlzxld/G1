@@ -1,0 +1,16 @@
+# 第一阶段：编译 Node.js 静态文件
+FROM node:18 AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# 第二阶段：使用 Caddy 提供服务
+FROM caddy:2-alpine
+# 将编译好的静态文件复制到 Caddy 的 web 根目录
+COPY --from=builder /app/dist /srv
+
+# 在 docker-compose.prod.yml 中我们会将 Caddyfile.prod 挂载到 /etc/caddy/Caddyfile
+EXPOSE 80
+EXPOSE 443

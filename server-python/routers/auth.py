@@ -7,10 +7,11 @@ import bcrypt
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+import os
 from jose import jwt
 from datetime import datetime, timedelta
 
-SECRET_KEY = "your-super-secret-key-for-mes"
+SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-for-mes")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
 
@@ -38,21 +39,29 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         "user": user
     }
 
-@router.get("/me")
-def read_users_me(request: Request, db: Session = Depends(get_db)):
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
     auth_header = request.headers.get("Authorization", "")
-    user_id = 1 # fallback
-    if auth_header.startswith("Bearer "):
-        token = auth_header.split("Bearer ")[1]
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id = int(payload.get("sub"))
-        except Exception:
-            pass
-
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="未授权访问，缺失Token")
+        
+    token = auth_header.split("Bearer ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = int(payload.get("sub"))
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token已过期或无效")
+        
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=401, detail="账户不存在或已被删除")
+        
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="账号已被停用，请联系管理员")
+        
+    return user
+
+@router.get("/me")
+def read_users_me(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
         
     perms = db.query(models.PagePermission).filter(models.PagePermission.user_id == user.id).all()
     user_dict = user.__dict__.copy()

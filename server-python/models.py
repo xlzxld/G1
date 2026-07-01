@@ -54,16 +54,16 @@ class Order(Base):
     id = Column(Integer, primary_key=True, index=True)
     order_no = Column(String, unique=True, index=True, nullable=False)
     product_name = Column(String, nullable=False)
-    customer_id = Column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    customer_id = Column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), index=True, nullable=True)
     customer_name = Column(String, default="") # Kept for legacy/fallback
-    priority = Column(Integer, default=0)
-    status = Column(String, default="in_progress")
+    priority = Column(Integer, index=True, default=0)
+    status = Column(String, index=True, default="in_progress")
     current_step_id = Column(Integer, nullable=True)
     shipment_date = Column(DateTime, nullable=True)
     notes = Column(String, default="")
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     inventory_deducted = Column(Integer, default=0) # 0=未扣减，1=已扣减
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now(), index=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     customer = relationship("Customer", back_populates="orders")
@@ -77,8 +77,8 @@ class ProcessFlow(Base):
     name = Column(String, nullable=False)
     description = Column(String, default="")
     is_template = Column(Integer, default=0)
-    order_id = Column(Integer, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
+    order_id = Column(Integer, index=True, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     steps = relationship("ProcessStep", back_populates="flow", cascade="all, delete-orphan")
@@ -88,7 +88,7 @@ class ProcessStep(Base):
     __tablename__ = "process_steps"
 
     id = Column(Integer, primary_key=True, index=True)
-    flow_id = Column(Integer, ForeignKey("process_flows.id", ondelete="CASCADE"), nullable=False)
+    flow_id = Column(Integer, ForeignKey("process_flows.id", ondelete="CASCADE"), index=True, nullable=False)
     name = Column(String, nullable=False)
     seq = Column(Integer, default=0)
     required = Column(Integer, default=1)
@@ -99,7 +99,7 @@ class ProcessStep(Base):
     cost = Column(Float, nullable=True)
     assignee = Column(String, default="")
     completion_condition = Column(String, default="manual")
-    status = Column(String, default="pending")
+    status = Column(String, index=True, default="pending")
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     completed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -111,8 +111,8 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
-    step_id = Column(Integer, ForeignKey("process_steps.id", ondelete="CASCADE"), nullable=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), index=True, nullable=False)
+    step_id = Column(Integer, ForeignKey("process_steps.id", ondelete="CASCADE"), index=True, nullable=True)
     filename = Column(String, nullable=False)
     original_name = Column(String, nullable=False)
     category = Column(String, default="图纸")
@@ -124,7 +124,7 @@ class Document(Base):
     title = Column(String, default="")
     description = Column(String, default="")
     uploaded_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now(), index=True)
 
     order = relationship("Order", back_populates="documents")
 

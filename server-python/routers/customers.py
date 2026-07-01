@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, cast, String
+from sqlalchemy.dialects.postgresql import JSONB
 from typing import List
 from database import get_db
 import models, schemas
@@ -10,7 +12,17 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 def get_customers(db: Session = Depends(get_db), skip: int = 0, limit: int = 100, keyword: str = None):
     query = db.query(models.Customer)
     if keyword:
-        query = query.filter(models.Customer.name.ilike(f"%{keyword}%"))
+        kw_like = f"%{keyword}%"
+        query = query.filter(
+            or_(
+                models.Customer.name.ilike(kw_like),
+                models.Customer.contact.ilike(kw_like),
+                models.Customer.phone.ilike(kw_like),
+                models.Customer.wechat.ilike(kw_like),
+                models.Customer.email.ilike(kw_like),
+                cast(cast(models.Customer.contacts, JSONB), String).ilike(kw_like)
+            )
+        )
     customers = query.order_by(models.Customer.name).offset(skip).limit(limit).all()
     return customers
 

@@ -23,6 +23,8 @@ pnpm-debug.log*
 !.env.*.example
 
 # Docker / local runtime data
+docker-compose.override.yml
+docker-compose.*.override.yml
 uploads/
 server-python/uploads/
 server/uploads/

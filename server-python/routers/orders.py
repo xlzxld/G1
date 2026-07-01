@@ -8,6 +8,8 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 from sqlalchemy import or_, desc, asc
 
+from sqlalchemy.orm import joinedload
+
 @router.get("")
 def get_orders(
     db: Session = Depends(get_db), 
@@ -20,7 +22,7 @@ def get_orders(
     sort_order: str = "desc",
     customer_id: int = None
 ):
-    query = db.query(models.Order)
+    query = db.query(models.Order).options(joinedload(models.Order.customer))
     
     if customer_id:
         query = query.filter(models.Order.customer_id == customer_id)
@@ -51,6 +53,13 @@ def get_orders(
             
     skip = (page - 1) * limit
     orders = query.offset(skip).limit(limit).all()
+    
+    step_ids = [order.current_step_id for order in orders if order.current_step_id]
+    step_map = {}
+    if step_ids:
+        steps = db.query(models.ProcessStep).filter(models.ProcessStep.id.in_(step_ids)).all()
+        step_map = {s.id: s.name for s in steps}
+
     results = []
     for order in orders:
         order_dict = {
@@ -67,12 +76,8 @@ def get_orders(
             "created_by": order.created_by,
             "created_at": order.created_at,
             "updated_at": order.updated_at,
-            "current_step_name": ""
+            "current_step_name": step_map.get(order.current_step_id, "") if order.current_step_id else ""
         }
-        if order.current_step_id:
-            step = db.query(models.ProcessStep).filter(models.ProcessStep.id == order.current_step_id).first()
-            if step:
-                order_dict["current_step_name"] = step.name
         results.append(order_dict)
         
     return {"data": results, "total": total}
@@ -86,6 +91,12 @@ def create_order(order: schemas.OrderCreate, db: Session = Depends(get_db)):
         
     order_data = order.model_dump(exclude={"template_flow_id"})
     order_data["status"] = "in_progress"
+    
+    # 同步客户名称，解决冗余字段搜索不一致问题
+    db_customer = db.query(models.Customer).filter(models.Customer.id == order.customer_id).first()
+    if db_customer:
+        order_data["customer_name"] = db_customer.name
+        
     db_order = models.Order(**order_data)
     db.add(db_order)
     db.commit()
@@ -156,6 +167,12 @@ def update_order(order_id: int, order: schemas.OrderCreate, db: Session = Depend
     update_data = order.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_order, key, value)
+        
+    # 同步客户名称，解决重新关联客户后搜索依然搜到老客户的问题
+    if "customer_id" in update_data:
+        db_customer = db.query(models.Customer).filter(models.Customer.id == update_data["customer_id"]).first()
+        if db_customer:
+            db_order.customer_name = db_customer.name
         
     db.commit()
     db.refresh(db_order)

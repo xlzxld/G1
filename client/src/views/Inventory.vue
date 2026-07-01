@@ -9,7 +9,7 @@
     </div>
 
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-4 mb-6 flex flex-wrap gap-3 items-center shadow-sm">
-      <el-input v-model="searchKeyword" placeholder="搜索物料名称或规格" clearable class="w-full sm:w-72" @clear="handleSearch" @keyup.enter="handleSearch">
+      <el-input v-model="searchKeyword" placeholder="搜索物料名称或规格" clearable class="w-full sm:w-72" @input="debouncedSearch" @clear="handleSearch" @keyup.enter="handleSearch">
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <el-button type="primary" @click="handleSearch" class="w-full sm:w-auto">搜索</el-button>
@@ -111,6 +111,7 @@ import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
 import { useAuthStore } from '../stores/auth.js';
+import { debounce } from '../utils/debounce.js';
 
 defineOptions({ name: 'Inventory' });
 
@@ -143,6 +144,8 @@ const sortOrder = ref('desc');
 const page = ref(1);
 const limit = ref(20);
 const highlightedId = ref(null);
+
+const debouncedSearch = debounce(handleSearch, 300);
 
 onMounted(() => {
   // 首屏依赖下沉至 watch immediate

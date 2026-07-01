@@ -13,6 +13,13 @@ api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const auth = useAuthStore();
+    
+    if (error.response?.data) {
+      if (error.response.data.detail && !error.response.data.error) {
+        error.response.data.error = error.response.data.detail;
+      }
+    }
+    
     if (error.response?.status === 401 && auth.refreshToken && !error.config._retry) {
       error.config._retry = true;
       try {
