@@ -166,7 +166,7 @@
           <span class="font-bold">支持的消息模板占位符 (在运行时会自动替换)：</span>
           <ul class="list-disc pl-4 mt-1 space-y-0.5">
             <li><b>订单/设计相关：</b> <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{order_no}</code> 订单号, <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{product_name}</code> 产品名, <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{drawing_title}</code> 图纸名, <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{version}</code> 版本号</li>
-            <li><b>库存预警：</b> <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{name}</code> 配件名, <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{available}</code> 当前可用量, <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{alert_threshold}</code> 预警阈值</li>
+            <li><b>库存预警：</b> <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{name}</code> 配件名, <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{available}</code> 当前可用量, <code class="bg-blue-100/50 dark:bg-blue-900/40 px-1 rounded">{min_stock}</code> 安全库存（原 {alert_threshold} 已更名，存量规则由迁移脚本自动更新）</li>
           </ul>
         </div>
       </el-form>

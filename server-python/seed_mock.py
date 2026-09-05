@@ -10,6 +10,12 @@ def seed_mock():
     try:
         print("Clearing old mock data...")
         # Clear existing data in correct dependency order
+        # （V3 新表先清：stock_movements 对 inventory_items 为 RESTRICT，必须最先删）
+        db.query(models.StockMovement).delete()
+        db.query(models.InventoryReservation).delete()
+        db.query(models.BOMItem).delete()
+        db.query(models.BOM).delete()
+        db.query(models.PurchaseOrder).delete()
         db.query(models.Notification).delete()
         db.query(models.Vendor).delete()
         db.query(models.Document).delete()
@@ -220,37 +226,53 @@ def seed_mock():
             db_templates.append(flow)
             
         # 3. Create 25 Inventory Items in Chinese (25 items)
-        print("Creating 25 Chinese inventory items...")
+        # V3 库存域：每个物料同时生成一条 OPENING 期初流水（total = 流水推导），
+        # 预警口径为 available = total - reserved <= min_stock
+        print("Creating 25 Chinese inventory items with opening movements...")
         inventory_data = [
-            {"name": "标准热咀 A1", "spec": "10mm / 开放式", "total": 120, "reserved": 20, "unit": "件", "alert_threshold": 50},
-            {"name": "加热圈 B2", "spec": "220V / 500W / 直径30mm", "total": 12, "reserved": 8, "unit": "件", "alert_threshold": 15}, # Trigger alert
-            {"name": "温控箱 C3", "spec": "8点式智能温控 / 双组PID", "total": 4, "reserved": 1, "unit": "台", "alert_threshold": 5},   # Trigger alert
-            {"name": "热电偶 K型", "spec": "M12螺纹 / 长度100mm", "total": 200, "reserved": 15, "unit": "支", "alert_threshold": 30},
-            {"name": "流道板密封圈", "spec": "15mm / 高温紫铜", "total": 300, "reserved": 50, "unit": "个", "alert_threshold": 100},
-            {"name": "针阀嘴针阀针", "spec": "直径2.0mm / 长度250mm", "total": 50, "reserved": 10, "unit": "支", "alert_threshold": 15},
-            {"name": "热流道分流板 A型", "spec": "双腔 / 标准开放式", "total": 15, "reserved": 5, "unit": "块", "alert_threshold": 6},
-            {"name": "单点热咀 H1", "spec": "针阀式 / 150mm", "total": 30, "reserved": 12, "unit": "件", "alert_threshold": 10},
-            {"name": "重载接插件", "spec": "16针 / 16A / 侧出", "total": 80, "reserved": 25, "unit": "套", "alert_threshold": 20},
-            {"name": "高温补偿导线", "spec": "K型双芯 / 玻纤屏蔽", "total": 1000, "reserved": 150, "unit": "米", "alert_threshold": 200},
-            {"name": "陶瓷加热圈", "spec": "220V / 1000W / 直径50mm", "total": 25, "reserved": 5, "unit": "件", "alert_threshold": 10},
-            {"name": "感温线 J型", "spec": "弹簧压紧式 / 2米", "total": 150, "reserved": 30, "unit": "支", "alert_threshold": 40},
-            {"name": "针阀气缸 C1", "spec": "单组气动 / 高温密封", "total": 18, "reserved": 4, "unit": "套", "alert_threshold": 8},
-            {"name": "分流板垫块", "spec": "直径25mm / 钛合金", "total": 200, "reserved": 60, "unit": "个", "alert_threshold": 50},
-            {"name": "中心定位销", "spec": "直径16mm / 高精度", "total": 120, "reserved": 30, "unit": "件", "alert_threshold": 30},
-            {"name": "防漏金属垫圈", "spec": "直径12mm / 纯铜", "total": 500, "reserved": 100, "unit": "个", "alert_threshold": 150},
-            {"name": "电热管加热棒", "spec": "单头 / 10mm * 150mm / 400W", "total": 70, "reserved": 15, "unit": "支", "alert_threshold": 25},
-            {"name": "温控箱控制卡", "spec": "单段PID微电脑控制板", "total": 35, "reserved": 8, "unit": "块", "alert_threshold": 10},
-            {"name": "重载连接器防护罩", "spec": "双扣金属上壳 / PG21", "total": 45, "reserved": 10, "unit": "个", "alert_threshold": 12},
-            {"name": "感温针保护套管", "spec": "304不锈钢 / 8mm * 100mm", "total": 90, "reserved": 20, "unit": "支", "alert_threshold": 20},
-            {"name": "分流板加热管", "spec": "柔性加热管 / 长度800mm", "total": 40, "reserved": 15, "unit": "根", "alert_threshold": 15},
-            {"name": "气动针阀控制电磁阀", "spec": "五通二位 / 24VDC", "total": 22, "reserved": 6, "unit": "只", "alert_threshold": 8},
-            {"name": "高温接线瓷介", "spec": "两极 / 螺钉紧固", "total": 400, "reserved": 80, "unit": "只", "alert_threshold": 100},
-            {"name": "高强度模具弹簧", "spec": "重载棕色 / 25mm * 80mm", "total": 110, "reserved": 40, "unit": "件", "alert_threshold": 30},
-            {"name": "气源三联件", "spec": "过滤减压油雾 / PT1/4", "total": 14, "reserved": 3, "unit": "套", "alert_threshold": 5}
+            {"name": "标准热咀 A1", "spec": "10mm / 开放式", "total": 120, "unit": "件", "min_stock": 50, "category": "热嘴", "location": "A区-01"},
+            {"name": "加热圈 B2", "spec": "220V / 500W / 直径30mm", "total": 12, "unit": "件", "min_stock": 15, "category": "加热元件", "location": "A区-02"},   # available 12 <= 15 触发预警
+            {"name": "温控箱 C3", "spec": "8点式智能温控 / 双组PID", "total": 4, "unit": "台", "min_stock": 5, "category": "温控", "location": "B区-01"},        # 触发预警
+            {"name": "热电偶 K型", "spec": "M12螺纹 / 长度100mm", "total": 200, "unit": "支", "min_stock": 30, "category": "测温", "location": "B区-02"},
+            {"name": "流道板密封圈", "spec": "15mm / 高温紫铜", "total": 300, "unit": "个", "min_stock": 100, "category": "密封件", "location": "B区-03"},
+            {"name": "针阀嘴针阀针", "spec": "直径2.0mm / 长度250mm", "total": 50, "unit": "支", "min_stock": 15, "category": "针阀", "location": "C区-01"},
+            {"name": "热流道分流板 A型", "spec": "双腔 / 标准开放式", "total": 15, "unit": "块", "min_stock": 6, "category": "分流板", "location": "C区-02"},
+            {"name": "单点热咀 H1", "spec": "针阀式 / 150mm", "total": 30, "unit": "件", "min_stock": 10, "category": "热嘴", "location": "C区-03"},
+            {"name": "重载接插件", "spec": "16针 / 16A / 侧出", "total": 80, "unit": "套", "min_stock": 20, "category": "电气连接", "location": "D区-01"},
+            {"name": "高温补偿导线", "spec": "K型双芯 / 玻纤屏蔽", "total": 1000, "unit": "米", "min_stock": 200, "category": "线材", "location": "D区-02"},
+            {"name": "陶瓷加热圈", "spec": "220V / 1000W / 直径50mm", "total": 25, "unit": "件", "min_stock": 10, "category": "加热元件", "location": "D区-03"},
+            {"name": "感温线 J型", "spec": "弹簧压紧式 / 2米", "total": 150, "unit": "支", "min_stock": 40, "category": "测温", "location": "E区-01"},
+            {"name": "针阀气缸 C1", "spec": "单组气动 / 高温密封", "total": 18, "unit": "套", "min_stock": 8, "category": "针阀", "location": "E区-02"},
+            {"name": "分流板垫块", "spec": "直径25mm / 钛合金", "total": 200, "unit": "个", "min_stock": 50, "category": "结构件", "location": "E区-03"},
+            {"name": "中心定位销", "spec": "直径16mm / 高精度", "total": 120, "unit": "件", "min_stock": 30, "category": "结构件", "location": "F区-01"},
+            {"name": "防漏金属垫圈", "spec": "直径12mm / 纯铜", "total": 500, "unit": "个", "min_stock": 150, "category": "密封件", "location": "F区-02"},
+            {"name": "电热管加热棒", "spec": "单头 / 10mm * 150mm / 400W", "total": 70, "unit": "支", "min_stock": 25, "category": "加热元件", "location": "F区-03"},
+            {"name": "温控箱控制卡", "spec": "单段PID微电脑控制板", "total": 35, "unit": "块", "min_stock": 10, "category": "温控", "location": "G区-01"},
+            {"name": "重载连接器防护罩", "spec": "双扣金属上壳 / PG21", "total": 45, "unit": "个", "min_stock": 12, "category": "电气连接", "location": "G区-02"},
+            {"name": "感温针保护套管", "spec": "304不锈钢 / 8mm * 100mm", "total": 90, "unit": "支", "min_stock": 20, "category": "测温", "location": "G区-03"},
+            {"name": "分流板加热管", "spec": "柔性加热管 / 长度800mm", "total": 40, "unit": "根", "min_stock": 15, "category": "加热元件", "location": "H区-01"},
+            {"name": "气动针阀控制电磁阀", "spec": "五通二位 / 24VDC", "total": 22, "unit": "只", "min_stock": 8, "category": "针阀", "location": "H区-02"},
+            {"name": "高温接线瓷介", "spec": "两极 / 螺钉紧固", "total": 400, "unit": "只", "min_stock": 100, "category": "电气连接", "location": "H区-03"},
+            {"name": "高强度模具弹簧", "spec": "重载棕色 / 25mm * 80mm", "total": 110, "unit": "件", "min_stock": 30, "category": "结构件", "location": "I区-01"},
+            {"name": "气源三联件", "spec": "过滤减压油雾 / PT1/4", "total": 14, "unit": "套", "min_stock": 5, "category": "气动", "location": "I区-02"}
         ]
+        db_items = []
         for item_data in inventory_data:
             item = models.InventoryItem(**item_data)
             db.add(item)
+            db_items.append(item)
+        db.commit()
+        for item in db_items:
+            db.refresh(item)
+            db.add(models.StockMovement(
+                item_id=item.id,
+                type="OPENING",
+                source_type="manual",
+                quantity=item.total,
+                balance_after=item.total,
+                operator_id=1,
+                note="演示期初数据"
+            ))
         db.commit()
 
         
@@ -444,6 +466,26 @@ def seed_mock():
         for co in completed_orders:
             co.updated_at = today
         db.commit()
+
+        # 6.5 演示预留：给前 3 张在制订单各预留 1-2 项物料（经 InventoryReservation 落库，
+        # reserved 缓存列与 SUM(预留) 保持一致）
+        print("Creating demo reservations for first 3 in-progress orders...")
+        demo_orders = db.query(models.Order).filter(models.Order.status == "in_progress").limit(3).all()
+        for o_idx, demo_order in enumerate(demo_orders):
+            picks = random.sample(db_items, k=random.randint(1, 2))
+            for item in picks:
+                exists = db.query(models.InventoryReservation).filter(
+                    models.InventoryReservation.order_id == demo_order.id,
+                    models.InventoryReservation.item_id == item.id
+                ).first()
+                if exists:
+                    continue
+                qty = random.randint(1, 3)
+                db.add(models.InventoryReservation(
+                    order_id=demo_order.id, item_id=item.id, quantity=qty
+                ))
+                item.reserved = (item.reserved or 0) + qty
+        db.commit()
         
         # 7. Generate 30 unread notifications referencing real order/inventory IDs
         print("Creating 30 random unread notifications...")
@@ -496,7 +538,7 @@ def seed_mock():
                 "item_name": item.name if item else "未知物料",
                 "total": item.total if item else 0,
                 "unit": item.unit if item else "件",
-                "threshold": item.alert_threshold if item else 5,
+                "threshold": item.min_stock if item else 5,
                 "qty": qty,
                 "status": random.choice(list(status_labels_n.values())),
             }

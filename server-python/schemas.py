@@ -178,18 +178,117 @@ class ProcessFlowResponse(ProcessFlowBase):
 class InventoryItemBase(BaseModel):
     name: str
     spec: str = ""
+    # 物料主数据（V3 库存域）
+    category: str = ""
+    location: str = ""
     total: int = 0
     reserved: int = 0
     unit: str = "件"
-    alert_threshold: int = 5
+    # 安全库存水位（接替 alert_threshold；预警口径 = available <= min_stock）
+    min_stock: int = 5
 
 class InventoryItemCreate(InventoryItemBase):
     pass
 
 class InventoryItemResponse(InventoryItemBase):
     id: int
+    is_archived: int = 0
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- 库存流水（V3：单一事实来源） ---
+class StockMovementResponse(BaseModel):
+    id: int
+    item_id: int
+    type: str
+    source_type: str = "manual"
+    source_id: Optional[int] = None
+    batch_no: str = ""
+    unit_cost: Optional[float] = None
+    quantity: int
+    balance_after: int
+    operator_id: Optional[int] = None
+    note: str = ""
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class MovementCreate(BaseModel):
+    """手工出入库/盘点请求。quantity 一律为正数，方向由 type 决定。"""
+    type: str  # INBOUND | OUTBOUND | RETURN | ADJUSTMENT
+    quantity: int
+    batch_no: str = ""
+    unit_cost: Optional[float] = None
+    note: str = ""
+    order_id: Optional[int] = None  # OUTBOUND/RETURN 可关联订单（领料/退料）
+
+# --- BOM 用料模板 ---
+class BOMItemIn(BaseModel):
+    item_id: int
+    quantity_per_set: int = 1
+    note: str = ""
+
+class BOMCreate(BaseModel):
+    name: str
+    product_type: str
+    note: str = ""
+    is_active: int = 1
+    items: List[BOMItemIn] = []
+
+class BOMItemResponse(BOMItemIn):
+    id: int
+    item_name: str = ""
+    item_spec: str = ""
+    item_unit: str = ""
+
+class BOMResponse(BaseModel):
+    id: int
+    name: str
+    product_type: str
+    version: int = 1
+    is_active: int = 1
+    note: str = ""
+    created_at: datetime
+    updated_at: datetime
+    items: List[BOMItemResponse] = []
+
+    class Config:
+        from_attributes = True
+
+# --- 采购单（雏形） ---
+class PurchaseOrderCreate(BaseModel):
+    item_id: int
+    vendor_id: Optional[int] = None
+    quantity: int
+    expected_date: Optional[datetime] = None
+    note: str = ""
+
+class PurchaseOrderStatusUpdate(BaseModel):
+    status: str  # draft -> ordered
+
+class PurchaseOrderReceive(BaseModel):
+    received_quantity: int
+    note: str = ""
+
+class PurchaseOrderResponse(BaseModel):
+    id: int
+    po_no: str
+    item_id: int
+    item_name: str = ""
+    item_unit: str = ""
+    vendor_id: Optional[int] = None
+    vendor_name: str = ""
+    quantity: int
+    received_quantity: int = 0
+    status: str = "draft"
+    expected_date: Optional[datetime] = None
+    received_at: Optional[datetime] = None
+    note: str = ""
+    created_at: datetime
 
     class Config:
         from_attributes = True

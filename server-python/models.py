@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -56,6 +56,8 @@ class Order(Base):
     id = Column(Integer, primary_key=True, index=True)
     order_no = Column(String, unique=True, index=True, nullable=False)
     product_name = Column(String, nullable=False)
+    # 产品类型（受控枚举，与 BOM.product_type 匹配；存量订单留空不回填，仅新单匹配）
+    product_type = Column(String, default="", index=True)
     customer_id = Column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), index=True, nullable=True)
     customer_name = Column(String, default="") # Kept for legacy/fallback
     priority = Column(Integer, index=True, default=0)
@@ -137,22 +139,118 @@ class InventoryItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     spec = Column(String, default="")
+    # category/location：物料主数据（V3 库存域）
+    category = Column(String, default="")
+    location = Column(String, default="")
     total = Column(Integer, default=0)
     reserved = Column(Integer, default=0)
     unit = Column(String, default="件")
-    alert_threshold = Column(Integer, default=5)
+    # min_stock：安全库存水位，接替旧 alert_threshold（口径统一为 available = total - reserved）
+    min_stock = Column(Integer, default=5)
+    # 归档替代删除：存在流水的物料禁止 DELETE，只能归档（保护审计链）
+    is_archived = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    movements = relationship("StockMovement", back_populates="item")
+
+
+class StockMovement(Base):
+    """库存流水——库存量的单一事实来源。
+
+    item.total = SUM(quantity)（缓存列，仅由 services/inventory_service.py 刷新）。
+    领料=OUTBOUND(source_type=order)；退料=RETURN；入库=INBOUND；
+    采购到货=INBOUND(source_type=purchase)；期初=OPENING；盘点差额=ADJUSTMENT。
+    quantity 带符号：入库为正、出库为负。
+    """
+    __tablename__ = "stock_movements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # 存在流水的物料禁止删除（应用层守卫），RESTRICT 作为 DB 级兜底
+    item_id = Column(Integer, ForeignKey("inventory_items.id", ondelete="RESTRICT"), index=True, nullable=False)
+    type = Column(String, index=True, nullable=False)
+    source_type = Column(String, default="manual", index=True)
+    source_id = Column(Integer, index=True, nullable=True)
+    batch_no = Column(String, default="")
+    unit_cost = Column(Float, nullable=True)
+    quantity = Column(Integer, nullable=False)
+    balance_after = Column(Integer, nullable=False)
+    operator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    note = Column(String, default="")
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
+    item = relationship("InventoryItem", back_populates="movements")
 
 
 class InventoryReservation(Base):
     __tablename__ = "inventory_reservations"
+    # 同一订单对同一物料只允许一条预留记录（并发重复预留修复，8/6 报告数据完整性 #6）
+    __table_args__ = (
+        UniqueConstraint("order_id", "item_id", name="uq_reservation_order_item"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     item_id = Column(Integer, ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
     quantity = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class BOM(Base):
+    """用料模板：与 ProcessFlow(is_template) 同构。建单时按 product_type 自动带出用料。"""
+    __tablename__ = "boms"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    # 受控枚举：两端（Order.product_type / BOM.product_type）只允许从已有类型中选择，
+    # 禁止自由文本（外部声音 #9：静默失配防护）
+    product_type = Column(String, index=True, nullable=False)
+    version = Column(Integer, default=1)
+    is_active = Column(Integer, default=1)
+    note = Column(String, default="")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    items = relationship("BOMItem", back_populates="bom", cascade="all, delete-orphan")
+
+
+class BOMItem(Base):
+    __tablename__ = "bom_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bom_id = Column(Integer, ForeignKey("boms.id", ondelete="CASCADE"), index=True, nullable=False)
+    item_id = Column(Integer, ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    quantity_per_set = Column(Integer, default=1, nullable=False)
+    note = Column(String, default="")
+
+    bom = relationship("BOM", back_populates="items")
+    item = relationship("InventoryItem")
+
+
+class PurchaseOrder(Base):
+    """采购单雏形：补货清单 → 采购 → 到货生成 INBOUND 流水。
+
+    雏形阶段一张采购单仅含一个物料；received_quantity 支持分批到货，
+    全部到齐后状态置 closed。
+    """
+    __tablename__ = "purchase_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    po_no = Column(String, unique=True, index=True, nullable=False)
+    item_id = Column(Integer, ForeignKey("inventory_items.id", ondelete="CASCADE"), index=True, nullable=False)
+    vendor_id = Column(Integer, ForeignKey("vendors.id", ondelete="SET NULL"), nullable=True)
+    quantity = Column(Integer, nullable=False)
+    received_quantity = Column(Integer, default=0)
+    status = Column(String, index=True, default="draft")  # draft | ordered | received | closed
+    expected_date = Column(DateTime, nullable=True)
+    received_at = Column(DateTime, nullable=True)
+    received_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    note = Column(String, default="")
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    item = relationship("InventoryItem")
+    vendor = relationship("Vendor")
 
 
 class Notification(Base):

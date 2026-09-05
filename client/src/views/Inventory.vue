@@ -22,7 +22,7 @@
         <el-table-column prop="spec" label="规格" width="120" sortable="custom" />
         <el-table-column prop="total" label="总量" width="95" align="center" sortable="custom">
           <template #default="{row}">
-            <span :style="{color:row.total<=row.alert_threshold?'#f56c6c':''}" :class="row.total<=row.alert_threshold?'font-bold':''">{{ row.total }}</span>
+            <span :style="{color:row.total-row.reserved<=row.min_stock?'#f56c6c':''}" :class="row.total-row.reserved<=row.min_stock?'font-bold':''">{{ row.total }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="reserved" label="已预留" width="95" align="center" sortable="custom" />
@@ -51,11 +51,11 @@
               <p class="text-slate-800 dark:text-slate-100 font-semibold text-base">{{ row.name }}</p>
               <p v-if="row.spec" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">规格：{{ row.spec }}</p>
             </div>
-            <el-tag v-if="row.total <= row.alert_threshold" type="danger" size="small">库存预警</el-tag>
+            <el-tag v-if="row.total - row.reserved <= row.min_stock" type="danger" size="small">库存预警</el-tag>
           </div>
           <div class="grid grid-cols-3 gap-2 text-sm mb-3">
             <div class="text-center bg-white dark:bg-industrial-800 rounded-lg p-2 border border-slate-200 dark:border-industrial-border">
-              <p :class="['font-bold text-lg', row.total <= row.alert_threshold ? 'text-red-500' : 'text-slate-800 dark:text-slate-100']">{{ row.total }}</p>
+              <p :class="['font-bold text-lg', row.total - row.reserved <= row.min_stock ? 'text-red-500' : 'text-slate-800 dark:text-slate-100']">{{ row.total }}</p>
               <p class="text-xs text-slate-400 mt-0.5">总量 ({{ row.unit }})</p>
             </div>
             <div class="text-center bg-white dark:bg-industrial-800 rounded-lg p-2 border border-slate-200 dark:border-industrial-border">
@@ -89,7 +89,7 @@
         <el-form-item label="规格"><el-input v-model="form.spec" /></el-form-item>
         <el-form-item label="总量" prop="total"><el-input-number v-model="form.total" :min="0" style="width:100%" /></el-form-item>
         <el-form-item label="单位"><el-input v-model="form.unit" /></el-form-item>
-        <el-form-item label="预警阈値"><el-input-number v-model="form.alert_threshold" :min="0" style="width:100%" /></el-form-item>
+        <el-form-item label="安全库存"><el-input-number v-model="form.min_stock" :min="0" style="width:100%" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="formVisible=false">取消</el-button><el-button type="primary" @click="save" :loading="saving">保存</el-button></template>
     </el-dialog>
@@ -129,7 +129,7 @@ const formVisible = ref(false);
 const editing = ref(null);
 const saving = ref(false);
 const formRef = ref(null);
-const form = reactive({ name:'', spec:'', total:0, unit:'件', alert_threshold:5 });
+const form = reactive({ name:'', spec:'', category:'', location:'', total:0, unit:'件', min_stock:5 });
 const rules = {
   name: [{ required: true, message: '请输入物料名称', trigger: 'blur' }],
   total: [{ required: true, message: '总量不能为空', trigger: 'change' }]
@@ -242,8 +242,8 @@ function handleSortChange({ prop, order }) {
   if (sortBy.value === newSortBy && sortOrder.value === newSortOrder) return;
   highlightedId.value = null; sortBy.value = newSortBy; sortOrder.value = newSortOrder; page.value = 1; fetchItems();
 }
-function openCreate() { editing.value = null; Object.assign(form, { name:'', spec:'', total:0, unit:'件', alert_threshold:5 }); formVisible.value = true; }
-function openEdit(row) { editing.value = row; Object.assign(form, { name:row.name, spec:row.spec, total:row.total, unit:row.unit, alert_threshold:row.alert_threshold }); formVisible.value = true; }
+function openCreate() { editing.value = null; Object.assign(form, { name:'', spec:'', category:'', location:'', total:0, unit:'件', min_stock:5 }); formVisible.value = true; }
+function openEdit(row) { editing.value = row; Object.assign(form, { name:row.name, spec:row.spec, category:row.category||'', location:row.location||'', total:row.total, unit:row.unit, min_stock:row.min_stock }); formVisible.value = true; }
 async function save() {
   if (!formRef.value) return;
   await formRef.value.validate(async (valid) => {

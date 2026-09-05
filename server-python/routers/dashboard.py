@@ -17,9 +17,11 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     # 生产中 (in_progress)
     in_progress = db.query(models.Order).filter(models.Order.status == "in_progress").count()
     
-    # 库存预警 (total - reserved <= alert_threshold or something similar)
-    # Let's just use total <= alert_threshold for simplicity
-    inventory_alert = db.query(models.InventoryItem).filter(models.InventoryItem.total <= models.InventoryItem.alert_threshold).count()
+    # 库存预警：口径统一 available = total - reserved <= min_stock（8/6 报告：口径不一致修复）
+    inventory_alert = db.query(models.InventoryItem).filter(
+        models.InventoryItem.is_archived == 0,
+        (models.InventoryItem.total - models.InventoryItem.reserved) <= models.InventoryItem.min_stock
+    ).count()
     
     # 今日完成 (completed today)
     # Using cast to Date is safer across dialects

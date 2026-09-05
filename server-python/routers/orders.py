@@ -254,16 +254,17 @@ def check_inventory_alert(item_id: int, db: Session):
         item = db.query(models.InventoryItem).filter(models.InventoryItem.id == item_id).first()
         if item:
             available = item.total - item.reserved
-            if available <= item.alert_threshold:
+            if available <= item.min_stock:
                 from routers.notifications import trigger_notification_rules
                 context = {
                     "id": item.id,
+                    "item_id": item.id,
                     "name": item.name,
                     "spec": item.spec or "",
                     "total": item.total,
                     "reserved": item.reserved,
                     "available": available,
-                    "alert_threshold": item.alert_threshold
+                    "min_stock": item.min_stock
                 }
                 trigger_notification_rules("inventory_alert", context, db)
     except Exception as e:

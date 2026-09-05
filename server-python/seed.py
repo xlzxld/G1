@@ -42,7 +42,8 @@ def seed_db():
         db.commit()
         
         if new_user.is_admin == 1:
-            pages = ['dashboard', 'customers', 'orders', 'process_flow', 'inventory', 'notifications', 'settings', 'outsourcing', 'drawings']
+            # purchases：采购管理（is_admin 端点 + 页面级入口，仅管理员）
+            pages = ['dashboard', 'customers', 'orders', 'process_flow', 'inventory', 'notifications', 'settings', 'outsourcing', 'drawings', 'purchases']
             for key in pages:
                 perm = PagePermission(
                     user_id=new_user.id,
