@@ -23,11 +23,11 @@ services:
     ports:
       # 0.0.0.0 绑定：局域网设备可通过 <宿主机IP>:8080 访问
       - "0.0.0.0:8080:8000"
+    # 安全配置（SECRET_KEY/CORS_ORIGINS）经 env_file 注入（compose 的 ${} 插值只读根目录 .env）
+    env_file:
+      - .env.dev
     environment:
       - DATABASE_URL=postgresql://mes_user:mes_password@db:5432/hotrunner_mes
-      # 安全配置（SECRET_KEY/CORS_ORIGINS）从 .env.dev 注入，缺失即启动失败（fail-fast）
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY 未设置——请在 .env.dev 中配置}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:9956,http://127.0.0.1:9956}
       # 自动从本机的 .env.dev 中读取，如果本机未配置，则默认使用 localhost
       - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
       # 强制 uvicorn 监听 0.0.0.0，否则默认只绑 127.0.0.1 导致容器外无法访问
