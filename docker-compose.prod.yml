@@ -27,6 +27,8 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS}
       - APP_ENV=prod
       - UPLOAD_DIR=${UPLOAD_DIR:-uploads}
+    # 启动前先执行数据库迁移（存量库首次部署需先 exec 执行 alembic stamp dd688f5c7744，见 docs/designs 计划 Cutover 一节）
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2"
     # 正式环境后端不直接暴露，全部经由 frontend(Caddy) 反向代理
     volumes:
       - uploads_data:/app/${UPLOAD_DIR:-uploads}
