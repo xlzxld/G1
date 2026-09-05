@@ -434,11 +434,8 @@ const currentEngineeringDocs = computed(() => {
 });
 
 // ────────────────────────── URL 构建 ──────────────────────────
-function getDocUrl(doc) {
-  if (!doc?.file_path) return '';
-  const fp = doc.file_path.replace(/\\/g, '/'); // 防御性处理反斜杠
-  return fp.startsWith('/') ? fp : '/' + fp;
-}
+// 文件改走鉴权接口（/api/documents/file），getDocUrl 内部按 docId 拉取并缓存 blob objectURL
+import { getDocUrl, resolveDocUrl } from '../utils/authFile.js';
 
 function onImgError(e) {
   e.target.style.display = 'none';
@@ -475,7 +472,11 @@ function formatDateTime(val) {
 
 // ────────────────────────── 全屏预览 ──────────────────────────
 const fullscreenDoc = ref(null);
-function viewFullscreen(doc) { fullscreenDoc.value = doc; }
+async function viewFullscreen(doc) {
+  fullscreenDoc.value = doc;
+  // 预取 blob URL，避免全屏首帧空图
+  await resolveDocUrl(doc);
+}
 
 // ────────────────────────── 上传 ──────────────────────────
 const uploadVisible = ref(false);

@@ -9,12 +9,9 @@
     handle_path /api/* {
         reverse_proxy backend:8000
     }
-    
-    # /uploads/* 反向代理至后端，不剥离前缀（FastAPI app.mount 本身挂载在 /uploads）
-    handle /uploads/* {
-        reverse_proxy backend:8000
-    }
-    
+
+    # /uploads 直通已移除：图纸/附件改走 /api/documents/file 鉴权下载（前端 blob 加载）
+
     # 处理 Vue Router 的 History 路由模式，回退到 index.html
     handle {
         try_files {path} {path}/ /index.html

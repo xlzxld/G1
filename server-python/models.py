@@ -11,6 +11,8 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     is_admin = Column(Integer, default=0)
     is_active = Column(Integer, default=1)
+    # 登出/封禁时递增：JWT 内记录签发时的版本号，不匹配即视为已吊销
+    token_version = Column(Integer, default=1)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

@@ -15,25 +15,8 @@
       document.documentElement.classList.remove('dark');
     }
   </script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            industrial: {
-              900: '#0f172a',
-              800: '#1e293b',
-              700: '#334155',
-              border: '#334155',
-              accent: '#38bdf8'
-            }
-          }
-        }
-      }
-    }
-  </script>
+  <!-- Tailwind CDN 脚本已移除（8/6 报告 P2：生产依赖外网 CDN 且与本地编译配置双份冲突），
+       industrial 色板以本地 tailwind.config.js 为准 -->
 </head>
 <body>
   <div id="app"></div>

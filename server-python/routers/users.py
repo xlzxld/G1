@@ -1,42 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
 import models, schemas
 import bcrypt
-from jose import jwt
-from routers.auth import SECRET_KEY, ALGORITHM
-
-def verify_admin(request: Request, db: Session = Depends(get_db)):
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="未登录，无法访问此接口"
-        )
-    token = auth_header.split("Bearer ")[1]
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        current_user_id = int(payload.get("sub"))
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="登录已失效，请重新登录"
-        )
-        
-    current_user = db.query(models.User).filter(models.User.id == current_user_id).first()
-    if not current_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="用户不存在"
-        )
-        
-    if current_user.is_admin != 1:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="权限不足，只有管理员可以访问用户管理接口"
-        )
-    return current_user
+# 鉴权单一来源（8/6 报告 P0-4：删除本文件的复制实现，统一走 auth.verify_admin，含 is_active/token_version 校验）
+from routers.auth import verify_admin
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(verify_admin)])
 

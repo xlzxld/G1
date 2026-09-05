@@ -85,8 +85,9 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = {
       id: res.data.id,
       username: res.data.username,
-      display_name: res.data.display_name,
-      role_label: res.data.role_label,
+      // 后端无 display_name/role_label 字段，用用户名与角色推导兜底（8/6 报告前端缺陷 #1）
+      display_name: res.data.display_name || res.data.username,
+      role_label: res.data.role_label || (res.data.is_admin ? '管理员' : '成员'),
       is_admin: res.data.is_admin,
     };
     permissions.value = res.data.permissions || [];

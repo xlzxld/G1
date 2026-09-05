@@ -1,16 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from database import get_db
 import models, schemas
 import os
+import re
 import time
-from jose import jwt, JWTError
-from routers.auth import SECRET_KEY, ALGORITHM
+# 鉴权单一来源（8/6 报告 P0-4：本模块原副本缺少 is_active 校验，统一委托 auth.get_current_user）
+from routers.auth import get_current_user
+from config import UPLOAD_DIR
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -61,23 +63,18 @@ def _is_allowed(filename: str, content_type: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Auth & Permission 依赖
+# Auth & Permission 依赖（get_current_user 已统一导入自 routers.auth）
 # ---------------------------------------------------------------------------
 
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="未登录，请先登录")
-    token = auth_header.split("Bearer ")[1]
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = int(payload.get("sub"))
-    except (JWTError, ValueError, TypeError):
-        raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    return user
+_UPLOAD_COMPONENT_RE = re.compile(r"^[^/\\\x00-\x1f<>:\"|?*]+$")
+
+
+def _sanitize_component(value: str, field: str, max_len: int) -> str:
+    """路径成分净化：拒绝分隔符/控制字符/..（8/6 报告 P0-5 上传路径穿越）。"""
+    value = (value or "").strip()
+    if not value or ".." in value or not _UPLOAD_COMPONENT_RE.match(value):
+        raise HTTPException(status_code=400, detail=f"{field} 含非法字符，已拒绝保存")
+    return value[:max_len]
 
 
 def _get_drawings_perm(user: models.User, db: Session) -> models.PagePermission:
@@ -167,10 +164,14 @@ async def upload_document(
     if not order:
         raise HTTPException(status_code=404, detail="订单不存在")
 
-    # 4. 构建存储路径：uploads/{order_no}/{category}/v{timestamp}-{filename}
+    # 4. 构建存储路径：{UPLOAD_DIR}/{订单号}/{分类}/v{timestamp}-{文件名}
+    #    三个成分全部净化，杜绝 ../ 路径穿越（8/6 报告 P0-5）
+    safe_category = _sanitize_component(category, "分类", 40)
+    safe_order_no = _sanitize_component(order.order_no, "订单号", 60)
+    safe_original = _sanitize_component(original_name, "文件名", 120)
     ts = int(time.time() * 1000)
-    stored_filename = f"v{ts}-{original_name}"
-    dir_path = os.path.join(UPLOAD_DIR, order.order_no, category)
+    stored_filename = f"v{ts}-{safe_original}"
+    dir_path = os.path.join(UPLOAD_DIR, safe_order_no, safe_category)
     os.makedirs(dir_path, exist_ok=True)
     file_path = os.path.join(dir_path, stored_filename)
 
@@ -232,6 +233,36 @@ async def upload_document(
             print(f"Trigger design_completed error: {e}")
 
     return db_doc
+
+
+# ---------------------------------------------------------------------------
+# GET /documents/file?id=  — 鉴权文件下载/预览
+# 替代原 /uploads 静态直挂（8/6 报告 P0-5：匿名可下载全部图纸）。
+# 前端通过带 Token 的 blob 请求加载，禁止把本接口当公开链接分发。
+# ---------------------------------------------------------------------------
+
+@router.get("/file")
+def download_document_file(
+    id: int = Query(..., description="图纸记录 ID"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_drawings_view),
+):
+    doc = db.query(models.Document).filter(models.Document.id == id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="图纸记录不存在")
+
+    base = os.path.abspath(UPLOAD_DIR)
+    full = os.path.abspath(doc.file_path)
+    if not full.startswith(base + os.sep):
+        raise HTTPException(status_code=400, detail="文件路径非法")
+    if not os.path.isfile(full):
+        raise HTTPException(status_code=404, detail="文件已丢失，请联系管理员")
+
+    return FileResponse(
+        full,
+        filename=doc.original_name,
+        media_type=doc.mime_type or "application/octet-stream",
+    )
 
 
 # ---------------------------------------------------------------------------

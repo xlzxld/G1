@@ -351,11 +351,8 @@ function getStepPhotos(stepId) {
   );
 }
 
-function getDocUrl(doc) {
-  if (!doc?.file_path) return '';
-  const fp = doc.file_path.replace(/\\/g, '/');
-  return fp.startsWith('/') ? fp : '/' + fp;
-}
+// 文件改走鉴权接口（/api/documents/file），blob 缓存后生成 objectURL
+import { getDocUrl, resolveDocUrl } from '../utils/authFile.js';
 
 function openPhotoUpload(step) {
   activeUploadStep.value = step;
@@ -404,8 +401,11 @@ async function submitUpload() {
   }
 }
 
-function viewPhoto(photo) {
+async function viewPhoto(photo) {
   fullscreenPhotoUrl.value = getDocUrl(photo);
+  // 确保拿到真实 URL（首帧可能尚未加载完成）
+  const url = await resolveDocUrl(photo);
+  if (url) fullscreenPhotoUrl.value = url;
 }
 </script>
 

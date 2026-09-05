@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from database import get_db
+from database import get_db, SessionLocal
 import models, schemas
 from routers.auth import read_users_me
 from pydantic import BaseModel
 import asyncio
 from fastapi.responses import StreamingResponse
-from jose import jwt
-from routers.auth import SECRET_KEY, ALGORITHM
+# SSE 鉴权统一走 auth 模块（校验 access 类型 + is_active + token_version）
+from routers.auth import get_user_from_token
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -38,11 +38,14 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 def get_user_id_from_token(token: str) -> Optional[int]:
+    db = SessionLocal()
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return int(payload.get("sub"))
+        user = get_user_from_token(token, db, expected_type="access")
+        return user.id
     except Exception:
         return None
+    finally:
+        db.close()
 
 @router.get("/stream")
 async def message_stream(token: str = None):

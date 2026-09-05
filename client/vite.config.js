@@ -7,16 +7,13 @@ export default defineConfig({
     port: 5173,
     host: true,
     allowedHosts: true,
-    proxy: { 
-      '/api': { 
+    proxy: {
+      '/api': {
         target: 'http://backend:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
-      },
-      '/uploads': {
-        target: 'http://backend:8000',
-        changeOrigin: true,
       }
+      // /uploads 静态代理已移除：文件改走 /api/documents/file 鉴权下载
     },
     watch: {
       usePolling: true,

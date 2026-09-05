@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from config import CORS_ORIGINS, UPLOAD_DIR, AUDIT_LOG_ENABLED
 from database import engine, Base
 
 # Database initialization is now managed by Alembic
@@ -10,27 +11,23 @@ app = FastAPI(
     version="2.0.0"
 )
 
-import os
-
-# CORS configuration
-origins_str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
-origins = [o.strip() for o in origins_str.split(",") if o.strip()]
-if not origins:
-    origins = ["*"]
+# CORS 白名单：为空视为配置缺失，拒绝以通配符启动（8/6 报告 P1-5）
+if not CORS_ORIGINS:
+    raise RuntimeError("CORS_ORIGINS 未配置：拒绝以 allow_origins=* 启动，请在环境变量中设置白名单")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from fastapi.staticfiles import StaticFiles
+import os
 
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# 原 /uploads 静态直挂已移除（8/6 报告 P0-5：匿名可下载全部图纸），
+# 文件改走 GET /api/documents/file 鉴权下载。
 
 @app.get("/")
 def read_root():
@@ -222,23 +219,21 @@ def get_friendly_detail(method: str, path: str, db) -> str:
 @app.middleware("http")
 async def audit_log_middleware(request: Request, call_next):
     response = await call_next(request)
-    
+
+    if not AUDIT_LOG_ENABLED:
+        return response
+
     if request.method in ["POST", "PUT", "DELETE"] and response.status_code < 400:
         path = request.url.path
         if path.startswith("/auth"):
             return response
-            
+
         auth_header = request.headers.get("Authorization", "")
         user_id = None
         if auth_header.lower().startswith("bearer "):
-            token = auth_header[7:]
-            try:
-                from jose import jwt
-                from routers.auth import SECRET_KEY, ALGORITHM
-                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-                user_id = int(payload.get("sub"))
-            except Exception:
-                pass
+            # 宽容解析：审计仅做归属，不阻断响应
+            from routers.auth import try_decode_user_id
+            user_id = try_decode_user_id(auth_header[7:])
                 
         db = SessionLocal()
         try:
