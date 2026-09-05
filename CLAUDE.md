@@ -60,7 +60,27 @@
     docker compose -f docker-compose.dev.yml exec backend python seed_mock.py
     ```
 
-### 4. 深度重置环境
+### 4. 测试与一致性验证（改代码后必须实际执行）
+*   **安装测试依赖（每次容器重建后执行一次）**：
+    ```bash
+    docker compose -f docker-compose.dev.yml exec backend pip install -r requirements-dev.txt
+    ```
+*   **运行后端集成测试（必须全绿）**：
+    ```bash
+    docker compose -f docker-compose.dev.yml exec backend python -m pytest tests/ -v
+    ```
+*   **前端生产构建（必须退出码 0）**：
+    ```bash
+    cd client && npm run build
+    ```
+*   **库存账本一致性检查（缓存列 vs 流水）**：
+    ```bash
+    docker compose -f docker-compose.dev.yml exec backend python scripts/recompute_inventory.py
+    ```
+> 存量 V2.5 库首次升级需先 `alembic stamp dd688f5c7744` 再 `alembic upgrade head`，详见 [docs/ops-runbook.md](docs/ops-runbook.md)。
+> 库存铁律：`InventoryItem.total/reserved` 只能经 `services/inventory_service.py` 写入，任何变更必须留下 `StockMovement` 流水；新代码禁止 `except Exception: print()` 吞异常。
+
+### 5. 深度重置环境
 *   **清除所有容器及数据库卷 (清除全部数据)**：
     ```bash
     docker compose -f docker-compose.dev.yml down -v

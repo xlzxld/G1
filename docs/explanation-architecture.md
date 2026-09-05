@@ -57,18 +57,14 @@ FastAPI 提供了出色的运行性能和自动化的参数校验功能。系统
 **数据库**: PostgreSQL (独立运行于 `db` 容器中)  
 **数据库驱动**: psycopg2 (支持高性能数据库连接与事务并发控制)  
 **ORM (对象关系映射)**: SQLAlchemy  
-* **结构同步**: 后端启动时，通过 `Base.metadata.create_all(bind=engine)` 自动扫描映射模型，确保在 PostgreSQL 中自动建立所需的全部数据表与索引约束，无需手动运行迁移脚本。
+* **结构同步**: 数据库结构由 **Alembic 迁移**管理（基线 `dd688f5c7744` 完整建表 + cutover `b7d9f2a4c6e8`）；生产启动链自动执行 `alembic upgrade head`。存量库首次升级需先 `alembic stamp`，详见 `docs/ops-runbook.md`。
+* **库存流水（V3）**: `InventoryItem.total/reserved` 为缓存列，唯一写入口是 `services/inventory_service.py`——每次变更插入 `StockMovement` 流水（单一事实来源）并在同事务内刷新缓存列，行锁 `with_for_update()` 防并发超卖。
 * **并发防卫**: 涉及库存预留和物理扣减等并发操作时，SQLAlchemy 模型底层使用 `with_for_update()` 产生排他锁锁行，防止高并发下产生库存超卖或数据覆盖冲突。
 
 ## 静态文件与图纸存储
 
-车间实操作业上传的图纸、照片等文件直接保存在后端服务器所在的本地磁盘空间中：
-* **存储结构**: `uploads/{order_no}/{category}/v{timestamp}-{original_name}`。
-* **接口服务**: 后端通过 FastAPI 静态文件服务模块直接对外挂载访问路径：
-  ```python
-  app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-  ```
-  前端可直接通过 `VITE_API_BASE_URL/uploads/...` 路径下载或预览图片，支持带有中文文件名的 URL 编码解析。
+车间实操作业上传的图纸、照片等文件保存在后端服务器本地磁盘（`uploads/{订单号}/{分类}/v{时间戳}-{文件名}`，路径成分经净化防穿越）：
+* **接口服务**: `/uploads` 静态直挂已移除（P0 安全修复）。文件经 **`GET /api/documents/file?id=`** 鉴权下载（FastAPI `FileResponse`），前端通过带 Token 的 blob 请求加载并生成本地 objectURL 预览，支持中文文件名。
 
 ## 局域网接入共享设计
 
