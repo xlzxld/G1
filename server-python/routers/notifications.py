@@ -237,10 +237,11 @@ def trigger_notification_rules(event: str, context: dict, db: Session):
                 except Exception:
                     pass
                     
-            # 5. 创建通知
+            # 5. 创建通知（from_user_id 可空：系统规则通知没有真实发送人，
+            #    不再假设 id=1 用户存在——那是对 seed 顺序的隐性依赖）
             for uid in to_user_ids:
                 new_notif = models.Notification(
-                    from_user_id=1,  # 系统账号
+                    from_user_id=None,  # 系统账号
                     to_user_id=uid,
                     title=title,
                     body=body,
