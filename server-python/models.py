@@ -66,7 +66,9 @@ class Order(Base):
     shipment_date = Column(DateTime, nullable=True)
     notes = Column(String, default="")
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    inventory_deducted = Column(Integer, default=0) # 0=未扣减，1=已扣减
+    # 已退役（D16）：订单状态流转不再触碰库存，领料 OUTBOUND 是唯一减 total 路径。
+    # 列仅为存量库兼容保留，新代码禁止读写。
+    inventory_deducted = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now(), index=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

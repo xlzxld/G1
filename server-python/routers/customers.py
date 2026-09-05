@@ -4,9 +4,11 @@ from sqlalchemy import or_, cast, String
 from sqlalchemy.dialects.postgresql import JSONB
 from typing import List
 from database import get_db
+from routers.auth import get_current_user
 import models, schemas
 
-router = APIRouter(prefix="/customers", tags=["customers"])
+# Router 级鉴权（8/6 报告 P0-1）
+router = APIRouter(prefix="/customers", tags=["customers"], dependencies=[Depends(get_current_user)])
 
 @router.get("", response_model=List[schemas.CustomerResponse])
 def get_customers(db: Session = Depends(get_db), skip: int = 0, limit: int = 100, keyword: str = None):

@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
+from routers.auth import get_current_user
 import models, schemas
 
-router = APIRouter(prefix="/process-flows", tags=["process-flows"])
+# Router 级鉴权（8/6 报告 P0-1）
+router = APIRouter(prefix="/process-flows", tags=["process-flows"], dependencies=[Depends(get_current_user)])
 
 @router.get("", response_model=List[schemas.ProcessFlowResponse])
 def get_process_flows(db: Session = Depends(get_db), skip: int = 0, limit: int = 100):

@@ -4,8 +4,10 @@ from sqlalchemy import func
 from datetime import datetime, date
 import models
 from database import get_db
+from routers.auth import get_current_user
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+# Router 级鉴权（8/6 报告 P0-1）
+router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
 
 @router.get("/stats")
 def get_dashboard_stats(db: Session = Depends(get_db)):

@@ -2,9 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
+from routers.auth import get_current_user
+from services import inventory_service as svc
 import models, schemas
 
-router = APIRouter(prefix="/orders", tags=["orders"])
+# Router 级鉴权：订单全部端点要求登录（8/6 报告 P0-1）
+router = APIRouter(prefix="/orders", tags=["orders"], dependencies=[Depends(get_current_user)])
 
 from sqlalchemy import or_, desc, asc
 
@@ -183,13 +186,24 @@ def delete_order(order_id: int, db: Session = Depends(get_db)):
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-        
+
+    # 删除守卫（D19）：已有领料/退料流水的订单禁止删除，否则流水失去业务上下文
+    has_movements = db.query(models.StockMovement).filter(
+        models.StockMovement.source_type == "order",
+        models.StockMovement.source_id == order.id
+    ).count() > 0
+    if has_movements:
+        raise HTTPException(status_code=400, detail="该订单已有领料/退料流水，禁止删除（库存审计链需要保留业务上下文）")
+
+    # 释放全部预留并回退 reserved 缓存列（8/6 报告数据完整性 #1 修复）
+    svc.release_order_reservations(db, order)
+
     flows = db.query(models.ProcessFlow).filter(models.ProcessFlow.order_id == order.id).all()
     for flow in flows:
         db.query(models.ProcessStep).filter(models.ProcessStep.flow_id == flow.id).delete()
     db.query(models.ProcessFlow).filter(models.ProcessFlow.order_id == order.id).delete()
     db.query(models.Document).filter(models.Document.order_id == order.id).delete()
-    
+
     db.delete(order)
     db.commit()
     return {"ok": True}
@@ -249,79 +263,24 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
         
     return order_dict
 
-def check_inventory_alert(item_id: int, db: Session):
-    try:
-        item = db.query(models.InventoryItem).filter(models.InventoryItem.id == item_id).first()
-        if item:
-            available = item.total - item.reserved
-            if available <= item.min_stock:
-                from routers.notifications import trigger_notification_rules
-                context = {
-                    "id": item.id,
-                    "item_id": item.id,
-                    "name": item.name,
-                    "spec": item.spec or "",
-                    "total": item.total,
-                    "reserved": item.reserved,
-                    "available": available,
-                    "min_stock": item.min_stock
-                }
-                trigger_notification_rules("inventory_alert", context, db)
-    except Exception as e:
-        print(f"Check inventory alert failed: {e}")
+# ────────────────────────── 库存联动（D16 退役） ──────────────────────────
+# 原 check_inventory_alert / deduct_order_inventory / rollback_order_inventory 已删除：
+# 领料 OUTBOUND 是唯一减 total 的业务路径（services/inventory_service.py），
+# 订单状态流转不再触碰库存；预警由服务层在提交后按阈值穿越评估。
 
-def deduct_order_inventory(order: models.Order, db: Session):
-    # 如果已经扣减过，或者非已完成状态，不做重复扣减
-    if order.status != "completed" or order.inventory_deducted == 1:
-        return
-    
-    # 查找该订单的所有用料预留并联动核销
-    reservations = db.query(models.InventoryReservation).filter(models.InventoryReservation.order_id == order.id).all()
-    if not reservations:
-        # 如果当前订单没有分配用料，不写入扣减完成标记，留待后续有物料时结转
-        return
-        
-    for res in reservations:
-        item = db.query(models.InventoryItem).filter(models.InventoryItem.id == res.item_id).with_for_update().first()
-        if item:
-            # 扣减总量与已预留量
-            item.total = max(0, item.total - res.quantity)
-            item.reserved = max(0, item.reserved - res.quantity)
-            db.commit() # 提前提交以便 check_inventory_alert 获取最新值
-            check_inventory_alert(res.item_id, db)
-            
-    order.inventory_deducted = 1
-    
-    # 触发订单完成通知
+def _notify_order_completed(order: models.Order, db: Session):
     try:
         from routers.notifications import trigger_notification_rules
-        order_dict = {
+        trigger_notification_rules("order_completed", {
             "id": order.id,
             "order_no": order.order_no,
             "product_name": order.product_name,
             "status": order.status,
             "priority": order.priority,
             "notes": order.notes or ""
-        }
-        trigger_notification_rules("order_completed", order_dict, db)
+        }, db)
     except Exception as e:
         print(f"Order completed notify failed: {e}")
-
-def rollback_order_inventory(order: models.Order, db: Session):
-    # 如果未做扣减，或者仍处于已完成状态，不做回滚
-    if order.inventory_deducted != 1:
-        return
-        
-    # 查找该订单的所有用料预留并联动还原
-    reservations = db.query(models.InventoryReservation).filter(models.InventoryReservation.order_id == order.id).all()
-    for res in reservations:
-        item = db.query(models.InventoryItem).filter(models.InventoryItem.id == res.item_id).with_for_update().first()
-        if item:
-            # 还原总量与已预留量
-            item.total = item.total + res.quantity
-            item.reserved = item.reserved + res.quantity
-            
-    order.inventory_deducted = 0
 
 from pydantic import BaseModel
 class StatusUpdate(BaseModel):
@@ -332,15 +291,13 @@ def update_order_status(order_id: int, payload: StatusUpdate, db: Session = Depe
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
-    # 如果订单从已完成退回到其他非完成状态，执行库存联动还原
-    if order.status == "completed" and payload.status != "completed":
-        rollback_order_inventory(order, db)
-        
+
+    prev_status = order.status
     order.status = payload.status
-    if payload.status == "completed":
-        deduct_order_inventory(order, db)
-        
+    # 订单完成不再触碰库存（D16）；只保留业务通知
+    if payload.status == "completed" and prev_status != "completed":
+        _notify_order_completed(order, db)
+
     db.commit()
     return {"ok": True}
 
@@ -372,8 +329,10 @@ def advance_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
             all_completed = False
             break
     if all_completed:
+        prev_status = order.status
         order.status = 'completed'
-        deduct_order_inventory(order, db)
+        if prev_status != 'completed':
+            _notify_order_completed(order, db)
 
     db.commit()
     return {"ok": True}
@@ -385,13 +344,10 @@ def rollback_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Step not found")
     step.status = 'pending'
     step.completed_at = None
-    
+
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     order.status = 'in_progress'
-    
-    # 联动还原已经扣除的库存，并恢复其预留锁定状态
-    rollback_order_inventory(order, db)
-    
+
     db.commit()
     return {"ok": True}
 
@@ -414,8 +370,10 @@ def skip_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
             all_completed = False
             break
     if all_completed:
+        prev_status = order.status
         order.status = 'completed'
-        deduct_order_inventory(order, db)
+        if prev_status != 'completed':
+            _notify_order_completed(order, db)
 
     db.commit()
     return {"ok": True}
@@ -458,40 +416,12 @@ def add_order_material(order_id: int, req: MaterialAdd, db: Session = Depends(ge
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
+
     if order.status == "completed":
         raise HTTPException(status_code=400, detail="订单已完成，不能修改或添加用料")
 
-    if req.quantity <= 0:
-        raise HTTPException(status_code=400, detail="用料数量必须大于0")
-
-    db_item = db.query(models.InventoryItem).filter(models.InventoryItem.id == req.item_id).with_for_update().first()
-    if not db_item:
-        raise HTTPException(status_code=404, detail="所选零配件不存在")
-
-    available = db_item.total - db_item.reserved
-    if req.quantity > available:
-        raise HTTPException(status_code=400, detail=f"「{db_item.name}」可用库存不足！当前可用库存为 {available} {db_item.unit}")
-
-    # 如果对该订单下同一零配件重复添加，则合并数量
-    existing = db.query(models.InventoryReservation).filter(
-        models.InventoryReservation.order_id == order_id,
-        models.InventoryReservation.item_id == req.item_id
-    ).first()
-
-    if existing:
-        existing.quantity += req.quantity
-    else:
-        new_res = models.InventoryReservation(
-            order_id=order_id,
-            item_id=req.item_id,
-            quantity=req.quantity
-        )
-        db.add(new_res)
-
-    db_item.reserved += req.quantity
-    db.commit()
-    check_inventory_alert(req.item_id, db)
+    # 预留经服务层：订单存在校验 + 行锁 + 唯一约束合并 + 预警穿越评估（数据完整性 #6/#7 修复）
+    svc.reserve_for_order(db, item_id=req.item_id, order_id=order_id, quantity=req.quantity)
     return {"ok": True}
 
 @router.delete("/{order_id}/materials/{reservation_id}")
@@ -499,7 +429,7 @@ def delete_order_material(order_id: int, reservation_id: int, db: Session = Depe
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
+
     if order.status == "completed":
         raise HTTPException(status_code=400, detail="订单已完成，不能删除已用用料")
 
@@ -510,13 +440,9 @@ def delete_order_material(order_id: int, reservation_id: int, db: Session = Depe
     if not res:
         raise HTTPException(status_code=404, detail="用料记录不存在")
 
-    db_item = db.query(models.InventoryItem).filter(models.InventoryItem.id == res.item_id).with_for_update().first()
-    if db_item:
-        db_item.reserved = max(0, db_item.reserved - res.quantity)
-
-    db.delete(res)
+    # 释放预留并回退 reserved 缓存列（经服务层，行锁保护）
+    svc.release_reservation(db, res)
     db.commit()
-    check_inventory_alert(res.item_id, db)
     return {"ok": True}
 
 @router.get("/{order_id}/locate")
