@@ -4,7 +4,7 @@ Router 级鉴权：本前缀下所有端点要求登录（8/6 报告 P0-1）。
 敏感操作两档分级（D13）：物料主数据增删改/盘点/归档/删除要求 is_admin（verify_admin）；
 领料/退料/入库/预留等日常操作仅需登录身份。
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from database import get_db
@@ -62,6 +62,123 @@ def get_inventory_items(
 def get_replenish_list(db: Session = Depends(get_db)):
     """补货意向清单：可用量 <= 安全库存的未归档物料（驾驶舱/采购页共用）。"""
     return svc.replenish_list(db)
+
+
+# ────────────────────────── Excel 批量导入导出（D9/D11，管理员） ──────────────────────────
+
+@router.post("/import")
+def import_inventory(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(verify_admin),
+):
+    """期初物料批量导入：部分成功 + 行级错误清单（D11）。
+
+    列头（首行）：名称* / 规格 / 分类 / 库位 / 单位 / 期初数量 / 安全库存 / 批次号
+    好数据带 OPENING 流水入库；坏行返回原因，用户改后可重传。
+    """
+    import openpyxl
+
+    if (file.size or 0) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件超过 10MB 上限")
+    name = file.filename or ""
+    if not name.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="仅支持 .xlsx 文件")
+
+    content = file.file.read()
+    try:
+        wb = openpyxl.load_workbook(content, read_only=True, data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"文件无法解析：{e}")
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    if not rows:
+        raise HTTPException(status_code=400, detail="空文件")
+
+    header = [str(c or "").strip() for c in rows[0]]
+    col = {h: i for i, h in enumerate(header)}
+    required = {"名称"}
+    if not required.issubset(set(header)):
+        raise HTTPException(status_code=400, detail=f"表头缺少必需列：{required}。期望列：名称/规格/分类/库位/单位/期初数量/安全库存/批次号")
+
+    imported, failed = 0, []
+    for idx, row in enumerate(rows[1:], start=2):
+        def _cell(key):
+            i = col.get(key)
+            return row[i] if i is not None and i < len(row) else None
+        try:
+            name_v = str(_cell("名称") or "").strip()
+            if not name_v:
+                raise ValueError("名称为空")
+            if db.query(models.InventoryItem).filter(models.InventoryItem.name == name_v).first():
+                raise ValueError(f"物料「{name_v}」已存在")
+            qty = int(float(_cell("期初数量") or 0))
+            if qty < 0:
+                raise ValueError("期初数量不能为负")
+            min_stock = int(float(_cell("安全库存") or 5))
+            item = models.InventoryItem(
+                name=name_v,
+                spec=str(_cell("规格") or "").strip(),
+                category=str(_cell("分类") or "").strip(),
+                location=str(_cell("库位") or "").strip(),
+                unit=str(_cell("单位") or "件").strip() or "件",
+                min_stock=min_stock, total=0, reserved=0,
+            )
+            db.add(item)
+            db.flush()
+            if qty > 0:
+                svc._apply_movement(db, item, "OPENING", qty, "manual", None,
+                                    str(_cell("批次号") or "").strip(), None, "Excel 期初导入",
+                                    current_user.id)
+            db.commit()
+            imported += 1
+        except HTTPException:
+            db.rollback()
+            raise
+        except Exception as e:
+            db.rollback()
+            failed.append({"row": idx, "reason": str(e)})
+            if len(failed) >= 500:
+                failed.append({"row": "-", "reason": "错误过多，已中止后续行（请修正后重传剩余部分）"})
+                break
+
+    return {"imported": imported, "failed_count": len(failed), "failed": failed}
+
+
+@router.get("/export")
+def export_inventory(
+    db: Session = Depends(get_db),
+    keyword: str = None,
+    current_user: models.User = Depends(get_current_user),
+):
+    """导出当前筛选的物料清单（含可用量），管理员可全量。"""
+    import openpyxl
+    import io
+    from fastapi.responses import StreamingResponse
+
+    query = db.query(models.InventoryItem).filter(models.InventoryItem.is_archived == 0)
+    if keyword and keyword.strip():
+        from sqlalchemy import or_
+        kw = f"%{keyword.strip()}%"
+        query = query.filter(or_(models.InventoryItem.name.ilike(kw), models.InventoryItem.spec.ilike(kw)))
+    items = query.order_by(models.InventoryItem.created_at.desc()).limit(10000).all()
+
+    wb = openpyxl.Workbook(write_only=True)
+    ws = wb.create_sheet("库存")
+    ws.append(["名称", "规格", "分类", "库位", "单位", "总量", "已预留", "可用", "安全库存", "更新时间"])
+    for i in items:
+        ws.append([i.name, i.spec, i.category, i.location, i.unit, i.total,
+                   i.reserved, (i.total or 0) - (i.reserved or 0), i.min_stock,
+                   str(i.updated_at or "")])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=inventory.xlsx"},
+    )
 
 
 @router.get("/{item_id}", response_model=schemas.InventoryItemResponse)

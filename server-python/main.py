@@ -37,7 +37,7 @@ def read_root():
 def health_check():
     return {"ok": True}
 
-from routers import customers, orders, inventory, process, documents, auth, users, dashboard, settings, vendors, notifications
+from routers import customers, orders, inventory, process, documents, auth, users, dashboard, settings, vendors, notifications, boms, purchases
 
 app.include_router(customers.router)
 app.include_router(orders.router)
@@ -50,6 +50,8 @@ app.include_router(dashboard.router)
 app.include_router(settings.router)
 app.include_router(vendors.router)
 app.include_router(notifications.router)
+app.include_router(boms.router)
+app.include_router(purchases.router)
 
 import urllib.parse
 from fastapi import Request
@@ -211,6 +213,8 @@ def get_friendly_detail(method: str, path: str, db) -> str:
         "auth": "登录认证",
         "documents": "图纸管理",
         "process": "工艺流程",
+        "boms": "BOM 用料模板",
+        "purchases": "采购单",
     }
     translated_base = entity_map.get(base, base)
     action_word = "添加" if method == "POST" else "更新" if method == "PUT" else "删除" if method == "DELETE" else method

@@ -112,6 +112,16 @@
             <el-option v-for="f in templates" :key="f.id" :label="f.name" :value="f.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="产品类型">
+          <el-select v-model="newOrder.product_type" clearable filterable placeholder="选择已有类型（BOM 匹配键）" style="width:100%">
+            <el-option v-for="t in productTypes" :key="t" :label="t" :value="t" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="用料模板">
+          <el-select v-model="newOrder.bom_id" clearable filterable :placeholder="bomOptions.length ? '选择 BOM 自动带料并预留' : '暂无可用 BOM'" style="width:100%">
+            <el-option v-for="b in bomOptions" :key="b.id" :label="`${b.name}（${(b.items || []).length} 项用料）`" :value="b.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="优先级" prop="priority"><el-select v-model="newOrder.priority" style="width:100%"><el-option label="普通" :value="0" /><el-option label="紧急" :value="1" /><el-option label="特急" :value="2" /></el-select></el-form-item>
         <el-form-item label="交付日期"><el-date-picker v-model="newOrder.shipment_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:100%" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="newOrder.notes" type="textarea" /></el-form-item>
@@ -144,7 +154,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch, nextTick, onActivated } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick, onActivated } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '../api/index.js';
@@ -173,7 +183,9 @@ const editFormRef = ref(null);
 const templates = ref([]);
 const customers = ref([]);
 const params = reactive({ keyword: '', status: '', priority: '', sort_by: 'created_at', sort_order: 'desc', page: 1, limit: 20 });
-const newOrder = reactive({ order_no: '', product_name: '', customer_id: null, template_flow_id: null, priority: 0, shipment_date: '', notes: '' });
+const newOrder = reactive({ order_no: '', product_name: '', customer_id: null, template_flow_id: null, priority: 0, shipment_date: '', notes: '', product_type: '', bom_id: null });
+const productTypes = ref([]);
+const boms = ref([]);
 
 const debouncedSearch = debounce(search, 300);
 
@@ -297,7 +309,21 @@ function onSort({ prop, order }) {
   fetchOrders();
 }
 
-function openCreate() { Object.assign(newOrder, { order_no: '', product_name: '', customer_id: null, template_flow_id: null, priority: 0, shipment_date: '', notes: '' }); dialogVisible.value = true; }
+function openCreate() { Object.assign(newOrder, { order_no: '', product_name: '', customer_id: null, template_flow_id: null, priority: 0, shipment_date: '', notes: '', product_type: '', bom_id: null }); fetchBomOptions(); dialogVisible.value = true; }
+
+async function fetchBomOptions() {
+  try {
+    const [typesRes, bomsRes] = await Promise.all([
+      api.get('/boms/product-types'),
+      api.get('/boms'),
+    ]);
+    productTypes.value = typesRes.data;
+    boms.value = bomsRes.data;
+  } catch (e) { console.error(e); }
+}
+const bomOptions = computed(() =>
+  boms.value.filter(b => b.is_active && (!newOrder.product_type || b.product_type === newOrder.product_type))
+);
 
 async function createOrder() {
   const valid = await createFormRef.value?.validate().catch(() => false);
@@ -306,10 +332,22 @@ async function createOrder() {
   try {
     const payload = { ...newOrder };
     if (!payload.shipment_date) payload.shipment_date = null;
-    await api.post('/orders', payload);
+    const res = await api.post('/orders', payload);
     dialogVisible.value = false;
     await fetchOrders();
-    ElMessage.success('创建成功');
+    // BOM 自动带料：批量预留 + 警告清单（不静默失败）
+    if (payload.bom_id) {
+      try {
+        const apply = await api.post(`/boms/apply/${res.data.id}`, { bom_id: payload.bom_id });
+        const w = apply.data.warnings || [];
+        if (w.length) ElMessage.warning(`已带料 ${apply.data.reserved_items}/${apply.data.total_items} 项；${w.join('；')}`);
+        else ElMessage.success(`已按 BOM 自动带料 ${apply.data.reserved_items} 项并预留`);
+      } catch (e) {
+        ElMessage.warning('BOM 带料失败，请到订单详情手动分配用料');
+      }
+    } else {
+      ElMessage.success('创建成功');
+    }
   }
   catch (e) { ElMessage.error(e.response?.data?.detail || e.response?.data?.error || '创建失败'); }
   finally { creating.value = false; }

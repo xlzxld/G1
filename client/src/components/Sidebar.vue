@@ -71,6 +71,8 @@ const menuItems = [
   { path: '/orders', label: '订单管理', icon: 'Document', page: 'orders' },
   { path: '/process-flow', label: '工艺管理', icon: 'Setting', page: 'process_flow' },
   { path: '/inventory', label: '库存管理', icon: 'Box', page: 'inventory' },
+  { path: '/boms', label: 'BOM 用料模板', icon: 'Grid', page: 'inventory' },
+  { path: '/purchases', label: '采购管理', icon: 'ShoppingCart', page: 'purchases', requiresAdmin: true },
   { path: '/users', label: '用户管理', icon: 'Avatar', page: 'users', requiresAdmin: true },
   { path: '/notifications', label: '通知中心', icon: 'Bell', page: 'notifications' },
   { path: '/outsourcing', label: '外协管理', icon: 'Van', page: 'outsourcing' },

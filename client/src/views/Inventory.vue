@@ -17,6 +17,10 @@
       </el-select>
       <el-checkbox v-model="showArchived" @change="handleSearch">显示已归档</el-checkbox>
       <el-button type="primary" @click="handleSearch" class="w-full sm:w-auto">搜索</el-button>
+      <el-button @click="exportExcel" class="w-full sm:w-auto">导出 Excel</el-button>
+      <el-upload v-if="auth.isAdmin" :show-file-list="false" :before-upload="importExcel" accept=".xlsx,.xlsm" class="inline-block ml-2">
+        <el-button type="warning" plain>导入 Excel</el-button>
+      </el-upload>
     </div>
 
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl overflow-hidden shadow-md p-4">
@@ -426,6 +430,42 @@ async function submitStocktake() {
   } catch (e) {
     ElMessage.error(e.response?.data?.error || '盘点失败');
   } finally { movementSaving.value = false; }
+}
+
+// ── Excel 导入导出（D9/D11） ──
+async function exportExcel() {
+  try {
+    const res = await api.get('/inventory/export', {
+      params: { keyword: searchKeyword.value || undefined },
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'inventory.xlsx'; a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { ElMessage.error(e.response?.data?.error || '导出失败'); }
+}
+async function importExcel(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await api.post('/inventory/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    const d = res.data;
+    await fetchItems(true);
+    if (d.failed_count > 0) {
+      const listHtml = d.failed.map(f => `<li>第 ${f.row} 行：${f.reason}</li>`).join('');
+      ElMessageBox.alert(
+        `<p>成功导入 <b>${d.imported}</b> 条；失败 <b>${d.failed_count}</b> 条（好数据已入库，修正后可重传）：</p><ul style="max-height:220px;overflow:auto;font-size:12px;padding-left:16px">${listHtml}</ul>`,
+        '导入结果（部分成功）',
+        { dangerouslyUseHTMLString: true, confirmButtonText: '知道了' }
+      ).catch(() => {});
+    } else {
+      ElMessage.success(`导入成功 ${d.imported} 条`);
+    }
+  } catch (e) {
+    ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '导入失败');
+  }
+  return false; // 阻止 el-upload 默认行为
 }
 
 // ── 预留 ──
