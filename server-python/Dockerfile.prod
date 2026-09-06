@@ -17,4 +17,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 生产环境使用 workers 提升并发，并关闭 reload
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# timeout-graceful-shutdown：SSE 长连接会阻塞优雅关闭导致部署挂死（QA ISSUE-005），5 秒后强制断开
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--timeout-graceful-shutdown", "5"]
