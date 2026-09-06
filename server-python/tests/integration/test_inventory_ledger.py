@@ -28,6 +28,22 @@ def test_non_admin_cannot_create_item(client, make_user):
     assert resp.status_code == 403, "物料主数据仅管理员（D13 两档权限）"
 
 
+def test_view_only_user_cannot_write_movements(client, make_user, db):
+    """回归：ISSUE-006（/qa 2026-09-06）——can_view 无 can_edit 的用户直接打 API
+    曾可写库存（前端隐藏按钮=权限幻觉）。后端必须 403。"""
+    user, headers = make_user(username="viewer1", is_admin=0)
+    db.add(models.PagePermission(user_id=user.id, page_key="inventory", can_view=1, can_edit=0))
+    db.flush()
+    item = models.InventoryItem(name="权限测试料", total=10)
+    db.add(item)
+    db.flush()
+
+    resp = client.post(f"/inventory/{item.id}/movements",
+                       json={"type": "INBOUND", "quantity": 5}, headers=headers)
+    assert resp.status_code == 403, "can_edit=0 的用户写流水必须 403（后端强制，非仅前端隐藏）"
+    assert item.total == 10, "被拒操作不得留下任何库存变更"
+
+
 # ────────────────────────── 流水账本基础 ──────────────────────────
 
 def test_create_item_writes_opening_ledger(client, make_user, db):

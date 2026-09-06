@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from database import get_db
 from routers.auth import get_current_user, verify_admin
+from routers.inventory import require_inventory_edit
 from services import inventory_service as svc
 import models, schemas
 
@@ -104,7 +105,7 @@ def delete_bom(bom_id: int, db: Session = Depends(get_db), current_user: models.
 
 
 @router.post("/apply/{order_id}")
-def apply_bom_to_order(order_id: int, payload: dict, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def apply_bom_to_order(order_id: int, payload: dict, db: Session = Depends(get_db), current_user: models.User = Depends(require_inventory_edit)):
     """建单自动带料：按模板逐项预留；失效/缺料项跳过并写入警告清单（不静默失败）。"""
     bom_id = payload.get("bom_id")
     bom = db.query(models.BOM).filter(models.BOM.id == bom_id, models.BOM.is_active == 1).first()

@@ -2,7 +2,8 @@
 
 Router 级鉴权：本前缀下所有端点要求登录（8/6 报告 P0-1）。
 敏感操作两档分级（D13）：物料主数据增删改/盘点/归档/删除要求 is_admin（verify_admin）；
-领料/退料/入库/预留等日常操作仅需登录身份。
+领料/退料/入库/预留等日常操作要求 can_edit('inventory')（require_inventory_edit，
+后端强制——不能只靠前端隐藏按钮，否则重演"权限幻觉"）。
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
@@ -13,6 +14,22 @@ from services import inventory_service as svc
 import models, schemas
 
 router = APIRouter(prefix="/inventory", tags=["inventory"], dependencies=[Depends(get_current_user)])
+
+
+def require_inventory_edit(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> models.User:
+    """库存日常操作权限：管理员直接放行，普通用户需要 inventory 页 can_edit。"""
+    if current_user.is_admin:
+        return current_user
+    perm = db.query(models.PagePermission).filter(
+        models.PagePermission.user_id == current_user.id,
+        models.PagePermission.page_key == "inventory",
+    ).first()
+    if not perm or not perm.can_edit:
+        raise HTTPException(status_code=403, detail="权限不足：无库存编辑权限（仅可查看）")
+    return current_user
 
 
 @router.get("")
@@ -200,7 +217,7 @@ def create_movement(
     item_id: int,
     req: schemas.MovementCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_inventory_edit),
 ):
     """入库/领料/退料/盘点统一入口（quantity 一律为正，方向由 type 决定）。"""
     if req.type not in {"INBOUND", "OUTBOUND", "RETURN", "ADJUSTMENT"}:
@@ -231,7 +248,7 @@ def create_movement(
 
 
 @router.post("/reserve")
-def reserve_inventory(req: dict, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def reserve_inventory(req: dict, db: Session = Depends(get_db), current_user: models.User = Depends(require_inventory_edit)):
     """订单预留（兼容原请求体 {item_id, order_id, quantity}）。"""
     try:
         item_id = int(req.get("item_id"))
