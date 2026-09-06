@@ -454,6 +454,17 @@ def delete_order_material(order_id: int, reservation_id: int, db: Session = Depe
     db.commit()
     return {"ok": True}
 
+@router.post("/{order_id}/release-reservations")
+def release_order_reservations_ep(order_id: int, db: Session = Depends(get_db),
+                                  current_user: models.User = Depends(require_inventory_edit)):
+    """已完成订单释放剩余预留（驾驶舱"已完成未领料"风险的解决动作，PROD-2）。"""
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    released = svc.release_completed_order_reservations(db, order)
+    return {"ok": True, "released": released}
+
+
 @router.get("/{order_id}/locate")
 def locate_order_page(
     order_id: int, 
