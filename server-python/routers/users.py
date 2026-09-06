@@ -61,11 +61,16 @@ def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(ge
     db_user.username = user.username
     db_user.is_admin = user.is_admin
     db_user.is_active = user.is_active
-    
+
     if user.password:
         hashed = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         db_user.password_hash = hashed
-        
+
+    # 密码重置或停用时递增 token_version，使该账号全部已签发 JWT 立即失效
+    # （否则被盗的 7 天期 access / 30 天期 refresh 在改密后仍然有效）
+    if user.password or not user.is_active:
+        db_user.token_version = (db_user.token_version or 1) + 1
+
     db.commit()
     db.refresh(db_user)
     

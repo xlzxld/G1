@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
 from routers.auth import get_current_user
+from routers.inventory import require_inventory_edit
 from services import inventory_service as svc
 import models, schemas
 
@@ -182,7 +183,8 @@ def update_order(order_id: int, order: schemas.OrderCreate, db: Session = Depend
     return db_order
 
 @router.delete("/{order_id}")
-def delete_order(order_id: int, db: Session = Depends(get_db)):
+def delete_order(order_id: int, db: Session = Depends(get_db),
+                 current_user: models.User = Depends(require_inventory_edit)):
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -286,8 +288,13 @@ from pydantic import BaseModel
 class StatusUpdate(BaseModel):
     status: str
 
+VALID_ORDER_STATUSES = {"in_progress", "completed", "paused"}
+
 @router.put("/{order_id}/status")
 def update_order_status(order_id: int, payload: StatusUpdate, db: Session = Depends(get_db)):
+    if payload.status not in VALID_ORDER_STATUSES:
+        raise HTTPException(status_code=400, detail=f"无效的订单状态，允许：{' / '.join(sorted(VALID_ORDER_STATUSES))}")
+
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -412,7 +419,8 @@ class MaterialAdd(BaseModel):
     quantity: int
 
 @router.post("/{order_id}/materials")
-def add_order_material(order_id: int, req: MaterialAdd, db: Session = Depends(get_db)):
+def add_order_material(order_id: int, req: MaterialAdd, db: Session = Depends(get_db),
+                       current_user: models.User = Depends(require_inventory_edit)):
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -425,7 +433,8 @@ def add_order_material(order_id: int, req: MaterialAdd, db: Session = Depends(ge
     return {"ok": True}
 
 @router.delete("/{order_id}/materials/{reservation_id}")
-def delete_order_material(order_id: int, reservation_id: int, db: Session = Depends(get_db)):
+def delete_order_material(order_id: int, reservation_id: int, db: Session = Depends(get_db),
+                          current_user: models.User = Depends(require_inventory_edit)):
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
