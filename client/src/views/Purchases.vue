@@ -27,10 +27,10 @@
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl shadow-md p-4">
       <div class="flex flex-wrap gap-3 items-center mb-4">
         <el-radio-group v-model="statusFilter" @change="fetchList">
-          <el-radio-button label="">全部</el-radio-button>
-          <el-radio-button label="draft">草稿</el-radio-button>
-          <el-radio-button label="ordered">已下单</el-radio-button>
-          <el-radio-button label="closed">已完结</el-radio-button>
+          <el-radio-button value="">全部</el-radio-button>
+          <el-radio-button value="draft">草稿</el-radio-button>
+          <el-radio-button value="ordered">已下单</el-radio-button>
+          <el-radio-button value="closed">已完结</el-radio-button>
         </el-radio-group>
         <el-input v-model="keyword" placeholder="按物料名搜索" clearable class="w-full sm:w-56" @keyup.enter="fetchList" @clear="fetchList" />
       </div>
