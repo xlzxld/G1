@@ -58,7 +58,7 @@
           <div class="w-full space-y-2">
             <div v-for="(it, idx) in form.items" :key="idx" class="flex gap-2 items-center">
               <el-select v-model="it.item_id" filterable placeholder="选择物料" style="flex:2">
-                <el-option v-for="i in itemOptions" :key="i.id" :label="`${i.name}（可用 ${i.total - i.reserved} ${i.unit}）`" :value="i.id" :disabled="i.is_archived" />
+                <el-option v-for="i in itemOptions" :key="i.id" :label="`${i.name}（可用 ${i.total - i.reserved} ${i.unit}）`" :value="i.id" :disabled="!!i.is_archived" />
               </el-select>
               <el-input-number v-model="it.quantity_per_set" :min="1" style="width:120px" />
               <el-button type="danger" text @click="form.items.splice(idx, 1)">移除</el-button>
