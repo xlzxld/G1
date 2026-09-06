@@ -15,7 +15,7 @@
         <el-icon><Plus /></el-icon>&nbsp;分配用料
       </el-button>
       <el-tag v-else type="success" size="small" effect="dark" class="flex items-center gap-0.5">
-        <el-icon><SuccessFilled /></el-icon>库存已联动扣减
+        <el-icon><SuccessFilled /></el-icon>库存以领料出库扣减
       </el-tag>
     </div>
 
@@ -90,10 +90,12 @@
     <!-- Summary / Info -->
     <div class="mt-4 pt-3 border-t border-slate-100 dark:border-industrial-border text-xs text-slate-400 dark:text-slate-500">
       <p v-if="!isCompleted">
-        * 分配用料将预留库存，订单完成（完工）时会自动在系统中扣除这些配件的总库存。
+        * 分配用料将预留库存，订单完成（完工）时以「领料出库」扣减——完成订单不会自动改库存。
       </p>
-      <p v-else class="text-green-500 dark:text-green-400">
-        已成功释放对应预留并扣减了零配件物理总库存。
+      <p v-else class="text-amber-500 dark:text-amber-400 flex items-center gap-2 flex-wrap">
+        <span v-if="materials.length > 0">该订单仍有 {{ materials.length }} 项预留未领料——若实物已通过其他方式出库，可释放剩余预留。</span>
+        <span v-else>订单已完成，无遗留预留。</span>
+        <el-button v-if="materials.length > 0" size="small" type="warning" plain @click="releaseRemaining" :loading="releasing">释放剩余预留</el-button>
       </p>
     </div>
 
@@ -178,7 +180,21 @@ const form = ref({
   quantity: 1
 });
 
+const emit = defineEmits(['refresh']);
 const isCompleted = computed(() => props.orderStatus === 'completed');
+const releasing = ref(false);
+
+async function releaseRemaining() {
+  try {
+    await ElMessageBox.confirm('释放该订单的全部剩余预留？释放后库存可用量将恢复，此操作不可撤销。', '释放剩余预留', { type: 'warning', confirmButtonText: '确认释放' });
+    releasing.value = true;
+    const res = await api.post(`/orders/${props.orderId}/release-reservations`);
+    ElMessage.success(`已释放 ${res.data.released} 项预留`);
+    emit('refresh');
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.response?.data?.error || '释放失败');
+  } finally { releasing.value = false; }
+}
 
 const isMobile = ref(false);
 const checkMobile = () => { isMobile.value = window.innerWidth <= 768; };

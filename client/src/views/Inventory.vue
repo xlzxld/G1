@@ -58,7 +58,8 @@
                     <el-dropdown-item v-if="auth.isAdmin && !row.is_archived" command="STOCKTAKE" divided>盘点</el-dropdown-item>
                     <el-dropdown-item v-if="auth.isAdmin && !row.is_archived" command="EDIT">编辑主数据</el-dropdown-item>
                     <el-dropdown-item v-if="auth.isAdmin && !row.is_archived" command="ARCHIVE">归档</el-dropdown-item>
-                    <el-dropdown-item v-if="auth.isAdmin" command="DELETE" class="text-red-500">删除</el-dropdown-item>
+                    <el-dropdown-item v-if="auth.isAdmin && row.is_archived" command="UNARCHIVE">解除归档</el-dropdown-item>
+                  <el-dropdown-item v-if="auth.isAdmin" command="DELETE" class="text-red-500">删除</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -158,9 +159,10 @@
     <el-dialog v-model="stocktakeVisible" title="库存盘点" :width="isMobile ? '95vw' : '440px'">
       <el-form :label-position="isMobile ? 'top' : 'right'" label-width="90px">
         <el-form-item label="物料">{{ stocktakeItem?.name }}</el-form-item>
-        <el-form-item label="系统数量">{{ stocktakeItem?.total }} {{ stocktakeItem?.unit }}</el-form-item>
-        <el-form-item label="实盘数量"><el-input-number v-model="stocktakeQty" :min="0" style="width:100%" /></el-form-item>
+        <el-form-item label="系统数量">{{ stocktakeItem?.total }} {{ stocktakeItem?.unit }}<span class="text-orange-500 text-xs ml-2">已预留 {{ stocktakeItem?.reserved || 0 }}</span></el-form-item>
+        <el-form-item label="实盘数量"><el-input-number v-model="stocktakeQty" :min="stocktakeItem?.reserved || 0" style="width:100%" /></el-form-item>
         <p class="text-xs text-slate-400">差额将以「盘点调整」流水入账：系统 {{ stocktakeItem?.total }} → 实盘 {{ stocktakeQty || 0 }}（差额 {{ (stocktakeQty || 0) - (stocktakeItem?.total || 0) }}）</p>
+        <p class="text-xs text-orange-500" v-if="(stocktakeQty || 0) < (stocktakeItem?.reserved || 0)">实盘不能低于已预留量——请先领料或释放预留</p>
       </el-form>
       <template #footer><el-button @click="stocktakeVisible=false">取消</el-button><el-button type="primary" @click="submitStocktake" :loading="movementSaving">确认盘点</el-button></template>
     </el-dialog>
@@ -193,7 +195,8 @@
         </el-table-column>
         <el-table-column prop="balance_after" label="结余" width="80" align="center" />
         <el-table-column prop="batch_no" label="批次" width="110" show-overflow-tooltip />
-        <el-table-column prop="note" label="备注" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="operator_name" label="操作人" width="90" show-overflow-tooltip />
+        <el-table-column prop="note" label="备注" min-width="130" show-overflow-tooltip />
       </el-table>
     </el-dialog>
   </div>
@@ -371,6 +374,12 @@ async function confirmArchive(row) {
     await fetchItems(); ElMessage.success('已归档');
   } catch (e) { if (e !== 'cancel') ElMessage.error(e.response?.data?.error || '归档失败'); }
 }
+async function confirmUnarchive(row) {
+  try {
+    await api.post(`/inventory/${row.id}/unarchive`);
+    await fetchItems(true); ElMessage.success('已解除归档');
+  } catch (e) { ElMessage.error(e.response?.data?.error || '解除归档失败'); }
+}
 async function confirmDelete(row) {
   try {
     await ElMessageBox.confirm(`确定删除「${row.name}」？有流水/引用的物料会被拒绝，请改用归档。`, '删除确认', { type: 'warning' });
@@ -383,7 +392,8 @@ async function confirmDelete(row) {
 async function ensureOrders() {
   ordersLoading.value = true;
   try {
-    const res = await api.get('/orders');
+    // 大 limit 拉全量（原来默认 20 条，旧订单永远选不到——PROD-5）
+    const res = await api.get('/orders', { params: { limit: 1000 } });
     orders.value = res.data.data || [];
   } catch (e) {
     ElMessage.error('订单列表加载失败');
@@ -401,6 +411,7 @@ function handleRowCommand(cmd, row) {
   else if (cmd === 'STOCKTAKE') openStocktake(row);
   else if (cmd === 'EDIT') openEdit(row);
   else if (cmd === 'ARCHIVE') confirmArchive(row);
+  else if (cmd === 'UNARCHIVE') confirmUnarchive(row);
   else if (cmd === 'DELETE') confirmDelete(row);
 }
 async function submitMovement() {

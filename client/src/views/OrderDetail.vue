@@ -62,6 +62,7 @@
             v-if="order"
             :order-id="order.id"
             :order-status="order.status"
+            @refresh="fetchOrder"
             class="flex-1"
           />
         </div>

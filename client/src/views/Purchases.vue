@@ -31,6 +31,7 @@
           <el-radio-button value="draft">草稿</el-radio-button>
           <el-radio-button value="ordered">已下单</el-radio-button>
           <el-radio-button value="closed">已完结</el-radio-button>
+          <el-radio-button value="cancelled">已取消</el-radio-button>
         </el-radio-group>
         <el-input v-model="keyword" placeholder="按物料名搜索" clearable class="w-full sm:w-56" @keyup.enter="fetchList" @clear="fetchList" />
       </div>
@@ -44,8 +45,8 @@
         </el-table-column>
         <el-table-column label="状态" width="90" align="center">
           <template #default="{row}">
-            <el-tag :type="{draft:'info', ordered:'warning', closed:'success'}[row.status]" size="small">
-              {{ {draft:'草稿', ordered:'已下单', closed:'已完结'}[row.status] }}
+            <el-tag :type="{draft:'info', ordered:'warning', closed:'success', cancelled:'danger'}[row.status] || 'info'" size="small">
+              {{ {draft:'草稿', ordered:'已下单', closed:'已完结', cancelled:'已取消'}[row.status] || row.status }}
             </el-tag>
           </template>
         </el-table-column>
@@ -56,6 +57,7 @@
           <template #default="{row}">
             <el-button v-if="row.status === 'draft'" size="small" type="primary" @click="confirmOrder(row)">确认下单</el-button>
             <el-button v-if="row.status === 'ordered'" size="small" type="success" @click="openReceive(row)">到货入库</el-button>
+            <el-button v-if="row.status === 'ordered'" size="small" type="warning" plain @click="confirmCancel(row)">取消</el-button>
             <el-button v-if="row.status === 'draft'" size="small" type="danger" @click="confirmDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -89,6 +91,7 @@
         <el-form-item label="采购单">{{ receivePo?.po_no }} · {{ receivePo?.item_name }}</el-form-item>
         <el-form-item label="未收数量">{{ (receivePo?.quantity || 0) - (receivePo?.received_quantity || 0) }} {{ receivePo?.item_unit }}</el-form-item>
         <el-form-item label="本次到货" required><el-input-number v-model="receiveQty" :min="1" :max="(receivePo?.quantity || 0) - (receivePo?.received_quantity || 0)" style="width:100%" /></el-form-item>
+        <el-form-item label="批次号"><el-input v-model="receiveBatch" placeholder="原材料批次（可空，用于质量追溯）" /></el-form-item>
         <p class="text-xs text-slate-400">到货即生成入库流水并解除对应库存预警；分批到货可多次录入，满额自动完结。</p>
       </el-form>
       <template #footer><el-button @click="receiveVisible=false">取消</el-button><el-button type="primary" @click="submitReceive" :loading="saving">确认入库</el-button></template>
@@ -119,6 +122,7 @@ const createVisible = ref(false);
 const receiveVisible = ref(false);
 const receivePo = ref(null);
 const receiveQty = ref(1);
+const receiveBatch = ref('');
 const form = reactive({ item_id: null, vendor_id: null, quantity: 1, expected_date: null, note: '' });
 
 async function fetchList() {
@@ -173,18 +177,27 @@ async function confirmOrder(row) {
 function openReceive(row) {
   receivePo.value = row;
   receiveQty.value = (row.quantity - row.received_quantity) || 1;
+  receiveBatch.value = '';
   receiveVisible.value = true;
 }
 async function submitReceive() {
   saving.value = true;
   try {
-    await api.post(`/purchases/${receivePo.value.id}/receive`, { received_quantity: receiveQty.value });
+    await api.post(`/purchases/${receivePo.value.id}/receive`, { received_quantity: receiveQty.value, batch_no: receiveBatch.value });
     receiveVisible.value = false;
     await Promise.all([fetchList(), fetchReplenish()]);
     ElMessage.success('到货入库成功，库存流水已生成');
   } catch (e) {
     ElMessage.error(e.response?.data?.error || '入库失败');
   } finally { saving.value = false; }
+}
+async function confirmCancel(row) {
+  try {
+    await ElMessageBox.confirm(`取消采购单「${row.po_no}」（${row.item_name} × ${row.quantity}）？取消后不可恢复。`, '取消采购单', { type: 'warning', confirmButtonText: '确认取消' });
+    await api.put(`/purchases/${row.id}/cancel`, { note: '供应商无法交付' });
+    await Promise.all([fetchList(), fetchReplenish()]);
+    ElMessage.success('采购单已取消');
+  } catch (e) { if (e !== 'cancel') ElMessage.error(e.response?.data?.error || '取消失败'); }
 }
 async function confirmDelete(row) {
   try {

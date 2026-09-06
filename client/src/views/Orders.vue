@@ -386,7 +386,14 @@ async function saveEdit() {
 }
 
 async function confirmDelete(row) {
-  try { await ElMessageBox.confirm(`确定删除订单 ${row.order_no}？`, '确认', { type: 'warning' }); await api.delete(`/orders/${row.id}`); await fetchOrders(); ElMessage.success('已删除'); } catch {}
+  try {
+    await ElMessageBox.confirm(`确定删除订单 ${row.order_no}？`, '确认', { type: 'warning' });
+    await api.delete(`/orders/${row.id}`);
+    await fetchOrders();
+    ElMessage.success('已删除');
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '删除失败：该订单可能有领料流水，禁止删除');
+  }
 }
 
 function statusLabel(s) {
