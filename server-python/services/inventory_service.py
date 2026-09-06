@@ -114,10 +114,33 @@ def create_item_with_opening(db: Session, *, name, spec="", category="", locatio
 
 
 def archive_item(db: Session, item_id: int) -> models.InventoryItem:
+    """归档守卫：未完结采购单 / 有效预留 / BOM 引用存在时拒绝归档——
+    否则 PO 永远无法到货（_lock_item 拒绝已归档物料），形成死锁（ENG-10/PROD-4）。"""
     item = db.query(models.InventoryItem).filter(models.InventoryItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="物料不存在")
+    open_po = db.query(models.PurchaseOrder).filter(
+        models.PurchaseOrder.item_id == item_id,
+        models.PurchaseOrder.status.in_(["draft", "ordered"]),
+    ).count()
+    if open_po:
+        raise HTTPException(status_code=400, detail="该物料存在未完结采购单，请先取消/完结采购单再归档")
+    active_res = db.query(models.InventoryReservation).filter(
+        models.InventoryReservation.item_id == item_id
+    ).count()
+    if active_res:
+        raise HTTPException(status_code=400, detail="该物料存在订单预留，请先释放预留再归档")
     item.is_archived = 1
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def unarchive_item(db: Session, item_id: int) -> models.InventoryItem:
+    item = db.query(models.InventoryItem).filter(models.InventoryItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="物料不存在")
+    item.is_archived = 0
     db.commit()
     db.refresh(item)
     return item
@@ -190,6 +213,20 @@ def release_order_reservations(db: Session, order: models.Order) -> None:
     ).all()
     for res in reservations:
         release_reservation(db, res)
+
+
+def release_completed_order_reservations(db: Session, order: models.Order) -> int:
+    """已完成订单释放剩余预留（PROD-2：驾驶舱"已完成未领料"的解决动作）。
+    返回释放的预留条数。仅允许对 completed 订单调用。"""
+    if order.status != "completed":
+        raise HTTPException(status_code=400, detail="仅已完成的订单可以释放剩余预留")
+    reservations = db.query(models.InventoryReservation).filter(
+        models.InventoryReservation.order_id == order.id
+    ).all()
+    for res in reservations:
+        release_reservation(db, res)
+    db.commit()
+    return len(reservations)
 
 
 # ────────────────────────── 出入库 / 领退料 / 盘点 ──────────────────────────
@@ -272,8 +309,8 @@ def return_material(db: Session, *, item_id: int, order_id=None, quantity: int,
 
 def inbound(db: Session, *, item_id: int, quantity: int, batch_no: str = "",
             unit_cost=None, note: str = "", source_type: str = "manual",
-            source_id=None, operator_id=None) -> dict:
-    """入库（含采购到货：source_type=purchase）。"""
+            source_id=None, operator_id=None, commit: bool = True) -> dict:
+    """入库（含采购到货：source_type=purchase）。commit=False 供调用方组合进更大事务。"""
     if quantity <= 0:
         raise HTTPException(status_code=400, detail="入库数量必须大于0")
     item = _lock_item(db, item_id)
@@ -281,8 +318,9 @@ def inbound(db: Session, *, item_id: int, quantity: int, batch_no: str = "",
     _apply_movement(db, item, "INBOUND", quantity, source_type, source_id,
                     batch_no, unit_cost, note or "入库", operator_id)
     after_available = (item.total or 0) - (item.reserved or 0)
-    db.commit()
-    evaluate_threshold_crossing(db, item_id, before_available, after_available)
+    if commit:
+        db.commit()
+        evaluate_threshold_crossing(db, item_id, before_available, after_available)
     return {"item": item}
 
 
@@ -292,6 +330,11 @@ def stocktake_adjust(db: Session, *, item_id: int, counted_qty: int,
     item = _lock_item(db, item_id)
     if counted_qty < 0:
         raise HTTPException(status_code=400, detail="实盘数量不能为负")
+    if counted_qty < (item.reserved or 0):
+        raise HTTPException(
+            status_code=400,
+            detail=f"实盘数量小于已预留量（{item.reserved}）——请先领料或释放预留，再盘点",
+        )
     before_available = (item.total or 0) - (item.reserved or 0)
     delta = counted_qty - (item.total or 0)
     if delta == 0:
@@ -309,24 +352,45 @@ def stocktake_adjust(db: Session, *, item_id: int, counted_qty: int,
 
 def receive_purchase(db: Session, *, po: models.PurchaseOrder, received_qty: int,
                      batch_no: str = "", note: str = "", operator_id=None) -> models.PurchaseOrder:
-    """到货确认：生成 INBOUND 流水，支持分批到货；累计满额后状态置 closed。"""
+    """到货确认：PO 行锁 + 流水与 PO 状态同一事务（ENG-4：防并发超收/中途失败双重入库）。
+    支持分批到货；累计满额后状态置 closed。"""
     if received_qty <= 0:
         raise HTTPException(status_code=400, detail="到货数量必须大于0")
+
+    po = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == po.id).with_for_update().first()
     if po.status == "closed":
         raise HTTPException(status_code=400, detail="采购单已完结，不能重复入库")
+    if po.status == "cancelled":
+        raise HTTPException(status_code=400, detail="采购单已取消，不能入库")
+    if po.status == "draft":
+        raise HTTPException(status_code=400, detail="草稿状态请先确认下单再录入到货")
     remaining = po.quantity - (po.received_quantity or 0)
     if received_qty > remaining:
         raise HTTPException(status_code=400, detail=f"到货数量超过未收数量（剩余 {remaining}）")
 
-    inbound(db, item_id=po.item_id, quantity=received_qty,
-            batch_no=batch_no, source_type="purchase", source_id=po.id,
-            note=note or f"采购单 {po.po_no} 到货", operator_id=operator_id)
-
-    po = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == po.id).first()
+    item = _lock_item(db, po.item_id)
+    before_available = (item.total or 0) - (item.reserved or 0)
+    _apply_movement(db, item, "INBOUND", received_qty, "purchase", po.id,
+                    batch_no, None, note or f"采购单 {po.po_no} 到货", operator_id)
     po.received_quantity = (po.received_quantity or 0) + received_qty
     po.received_at = po.received_at or func.now()
     if po.received_quantity >= po.quantity:
         po.status = "closed"
+    after_available = (item.total or 0) - (item.reserved or 0)
+    db.commit()
+    db.refresh(po)
+    evaluate_threshold_crossing(db, po.item_id, before_available, after_available)
+    return po
+
+
+def cancel_purchase(db: Session, *, po: models.PurchaseOrder, note: str = "", operator_id=None) -> models.PurchaseOrder:
+    """取消采购单（PROD-4：供应商无法交付时的出口）。仅 draft/ordered 可取消。"""
+    po = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == po.id).with_for_update().first()
+    if po.status not in ("draft", "ordered"):
+        raise HTTPException(status_code=400, detail="仅草稿/已下单状态可以取消")
+    po.status = "cancelled"
+    if note:
+        po.note = f"{(po.note or '')} | 取消：{note}".strip(" |")
     db.commit()
     db.refresh(po)
     return po

@@ -61,25 +61,29 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     } for o in due_soon[:8]]
 
     # ── 风险 3：缺料（available <= min_stock） ──
-    low = db.query(models.InventoryItem).filter(
+    low_query = db.query(models.InventoryItem).filter(
         models.InventoryItem.is_archived == 0,
         (models.InventoryItem.total - models.InventoryItem.reserved) <= models.InventoryItem.min_stock
-    ).order_by((models.InventoryItem.total - models.InventoryItem.reserved).asc()).all()
+    )
+    low_count = low_query.count()
+    low = low_query.order_by((models.InventoryItem.total - models.InventoryItem.reserved).asc()).limit(8).all()
     low_stock_items = [{
         "id": i.id, "name": i.name, "unit": i.unit,
         "available": (i.total or 0) - (i.reserved or 0), "min_stock": i.min_stock,
-    } for i in low[:8]]
+    } for i in low]
 
     # ── 风险 4：停滞工序（in_progress 超过 3 天） ──
     stall_deadline = datetime.now() - timedelta(days=STALLED_DAYS)
-    stalled = db.query(models.ProcessStep, models.Order).join(
+    stalled_query = db.query(models.ProcessStep, models.Order).join(
         models.ProcessFlow, models.ProcessStep.flow_id == models.ProcessFlow.id
     ).join(models.Order, models.ProcessFlow.order_id == models.Order.id).filter(
         models.ProcessStep.status == "in_progress",
         models.ProcessStep.started_at != None,  # noqa: E711
         models.ProcessStep.started_at < stall_deadline,
         models.Order.status == "in_progress",
-    ).order_by(models.ProcessStep.started_at.asc()).limit(8).all()
+    )
+    stalled_count = stalled_query.count()
+    stalled = stalled_query.order_by(models.ProcessStep.started_at.asc()).limit(8).all()
     stalled_items = [{
         "order_id": o.id, "order_no": o.order_no, "step_id": s.id,
         "step_name": s.name,
@@ -106,15 +110,23 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         "materials": c,
     } for o, c in completed_unpicked_rows]
 
-    # ── 趋势：近 14 天完成订单数（首版用 Order 数据源；流水自上线起，D19） ──
-    trend = []
-    for offset in range(TREND_DAYS - 1, -1, -1):
-        d = today - timedelta(days=offset)
-        cnt = db.query(models.Order).filter(
+    # ── 趋势：近 14 天完成订单数——单条 GROUP BY 查询（ENG-6：原为 14 次全表扫描） ──
+    since = today - timedelta(days=TREND_DAYS - 1)
+    rows = (
+        db.query(cast(models.Order.updated_at, Date).label("d"), func.count().label("c"))
+        .filter(
             models.Order.status == "completed",
-            cast(models.Order.updated_at, Date) == d
-        ).count()
-        trend.append({"date": d.strftime("%m-%d"), "completed": cnt})
+            cast(models.Order.updated_at, Date) >= since,
+        )
+        .group_by(cast(models.Order.updated_at, Date))
+        .all()
+    )
+    by_day = {r.d: r.c for r in rows}
+    trend = [
+        {"date": (today - timedelta(days=o)).strftime("%m-%d"),
+         "completed": by_day.get(today - timedelta(days=o), 0)}
+        for o in range(TREND_DAYS - 1, -1, -1)
+    ]
 
     return {
         "today_pending": today_pending,
@@ -125,8 +137,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         "risks": {
             "overdue_orders": {"count": len(overdue), "items": overdue_items},
             "due_soon": {"count": len(due_soon), "items": due_soon_items},
-            "low_stock": {"count": len(low), "items": low_stock_items},
-            "stalled_steps": {"count": len(stalled), "items": stalled_items},
+            "low_stock": {"count": low_count, "items": low_stock_items},
+            "stalled_steps": {"count": stalled_count, "items": stalled_items},
             "completed_unpicked": {"count": completed_unpicked_count, "items": completed_unpicked_items},
         },
         "trend": trend,

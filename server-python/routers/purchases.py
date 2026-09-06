@@ -49,6 +49,14 @@ def create_purchase(payload: schemas.PurchaseOrderCreate, db: Session = Depends(
     item = db.query(models.InventoryItem).filter(models.InventoryItem.id == payload.item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="物料不存在")
+    if item.is_archived:
+        raise HTTPException(status_code=400, detail="物料已归档，不能创建采购单")
+    open_po = db.query(models.PurchaseOrder).filter(
+        models.PurchaseOrder.item_id == payload.item_id,
+        models.PurchaseOrder.status.in_(["draft", "ordered"]),
+    ).first()
+    if open_po:
+        raise HTTPException(status_code=400, detail=f"该物料已有进行中的采购单 {open_po.po_no}（{dict(draft='草稿', ordered='已下单')[open_po.status]}），请勿重复下单")
 
     po_no = f"PO-{datetime.now().strftime('%Y%m%d')}-{db.query(models.PurchaseOrder).count() + 1:04d}"
     po = models.PurchaseOrder(
@@ -85,7 +93,20 @@ def receive_purchase(po_id: int, payload: schemas.PurchaseOrderReceive, db: Sess
     if po.status == "draft":
         raise HTTPException(status_code=400, detail="草稿状态请先确认下单再录入到货")
     po = svc.receive_purchase(db, po=po, received_qty=payload.received_quantity,
+                              batch_no=getattr(payload, "batch_no", "") or "",
                               note=payload.note, operator_id=current_user.id)
+    return _serialize(po)
+
+
+@router.put("/{po_id}/cancel")
+def cancel_purchase(po_id: int, payload: schemas.PurchaseOrderCancel = None,
+                    db: Session = Depends(get_db), current_user: models.User = Depends(verify_admin)):
+    """取消采购单（供应商无法交付的出口；draft/ordered 可取消）。"""
+    po = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == po_id).first()
+    if not po:
+        raise HTTPException(status_code=404, detail="采购单不存在")
+    note = (payload.note if payload and getattr(payload, "note", None) else "") or ""
+    po = svc.cancel_purchase(db, po=po, note=note, operator_id=current_user.id)
     return _serialize(po)
 
 

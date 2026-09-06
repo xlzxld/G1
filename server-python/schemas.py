@@ -272,6 +272,10 @@ class PurchaseOrderStatusUpdate(BaseModel):
 
 class PurchaseOrderReceive(BaseModel):
     received_quantity: int
+    batch_no: str = ""
+    note: str = ""
+
+class PurchaseOrderCancel(BaseModel):
     note: str = ""
 
 class PurchaseOrderResponse(BaseModel):

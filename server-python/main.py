@@ -243,16 +243,25 @@ async def audit_log_middleware(request: Request, call_next):
         try:
             action = "create" if request.method == "POST" else "update" if request.method == "PUT" else "delete"
             detail_text = get_friendly_detail(request.method, path, db)
+            parts = path.strip("/").split("/")
+            # entity_id：路径中的数字段（/inventory/{id}/movements → id）
+            entity_id = None
+            for seg in parts[1:]:
+                if seg.isdigit():
+                    entity_id = int(seg)
+                    break
             audit = models.AuditLog(
                 user_id=user_id,
                 action=action,
-                entity_type=path.split("/")[1] if len(path.split("/")) > 1 else "unknown",
+                entity_type=parts[0] if parts and parts[0] else "unknown",
+                entity_id=entity_id,
                 detail=detail_text
             )
             db.add(audit)
             db.commit()
         except Exception as e:
-            print(f"Audit log failed: {e}")
+            import logging
+            logging.getLogger("audit").warning("Audit log failed for %s %s: %s", request.method, path, e)
         finally:
             db.close()
             

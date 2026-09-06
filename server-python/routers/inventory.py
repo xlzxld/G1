@@ -130,10 +130,18 @@ def import_inventory(
                 raise ValueError("名称为空")
             if db.query(models.InventoryItem).filter(models.InventoryItem.name == name_v).first():
                 raise ValueError(f"物料「{name_v}」已存在")
-            qty = int(float(_cell("期初数量") or 0))
+            raw_qty = _cell("期初数量") or 0
+            if isinstance(raw_qty, float) and not raw_qty.is_integer():
+                raise ValueError(f"期初数量必须为整数（收到 {raw_qty}）")
+            qty = int(raw_qty)
             if qty < 0:
                 raise ValueError("期初数量不能为负")
-            min_stock = int(float(_cell("安全库存") or 5))
+            raw_ms = _cell("安全库存") if _cell("安全库存") is not None else 5
+            if isinstance(raw_ms, float) and not raw_ms.is_integer():
+                raise ValueError(f"安全库存必须为整数（收到 {raw_ms}）")
+            min_stock = int(raw_ms)
+            if min_stock < 0:
+                raise ValueError("安全库存不能为负")
             item = models.InventoryItem(
                 name=name_v,
                 spec=str(_cell("规格") or "").strip(),
@@ -206,10 +214,21 @@ def get_inventory_item(item_id: int, db: Session = Depends(get_db)):
     return item
 
 
-@router.get("/{item_id}/movements", response_model=List[schemas.StockMovementResponse])
+@router.get("/{item_id}/movements")
 def get_item_movements(item_id: int, db: Session = Depends(get_db), limit: int = Query(50, le=200)):
-    """物料流水历史（谁/何时/动多少/余多少）。"""
-    return svc.item_movements(db, item_id, limit)
+    """物料流水历史（谁/何时/动多少/余多少）。operator_name 服务端 join。"""
+    movements = svc.item_movements(db, item_id, limit)
+    uid_list = [m.operator_id for m in movements if m.operator_id]
+    users = {
+        u.id: u.username
+        for u in db.query(models.User).filter(models.User.id.in_(uid_list or [0])).all()
+    }
+    result = []
+    for m in movements:
+        d = schemas.StockMovementResponse.model_validate(m).model_dump()
+        d["operator_name"] = users.get(m.operator_id, "")
+        result.append(d)
+    return result
 
 
 @router.post("/{item_id}/movements")
@@ -307,8 +326,18 @@ def archive_inventory_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(verify_admin),
 ):
-    """归档（管理员）：有流水的物料用归档代替删除。"""
+    """归档（管理员）：有流水的物料用归档代替删除。存在未完结 PO/预留时拒绝。"""
     return svc.archive_item(db, item_id)
+
+
+@router.post("/{item_id}/unarchive", response_model=schemas.InventoryItemResponse)
+def unarchive_inventory_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(verify_admin),
+):
+    """解除归档（管理员）：恢复参与库存操作与默认列表。"""
+    return svc.unarchive_item(db, item_id)
 
 
 @router.delete("/{item_id}")
@@ -338,16 +367,15 @@ def locate_inventory_page(
     if not target_item:
         raise HTTPException(status_code=404, detail="物料不存在")
 
-    from sqlalchemy import desc, asc
-    if sort_by and hasattr(models.InventoryItem, sort_by):
+    from sqlalchemy import desc, asc, func
+    sortable = {"name", "spec", "category", "total", "reserved", "unit", "min_stock", "created_at", "updated_at"}
+    if sort_by in sortable:
         column = getattr(models.InventoryItem, sort_by)
         query = query.order_by(asc(column) if sort_order == 'asc' else desc(column))
     else:
         query = query.order_by(desc(models.InventoryItem.created_at))
 
-    all_ids = [r[0] for r in query.with_entities(models.InventoryItem.id).all()]
-    try:
-        idx = all_ids.index(item_id)
-        return {"page": (idx // limit) + 1}
-    except ValueError:
-        return {"page": 1}
+    # SQL 端计算目标位置，不物化全表 ID（ENG-7）
+    subq = query.with_entities(models.InventoryItem.id).subquery()
+    idx = db.query(func.count()).select_from(subq).filter(subq.c.id < item_id).scalar()
+    return {"page": (idx // limit) + 1}
