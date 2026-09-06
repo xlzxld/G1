@@ -29,17 +29,20 @@ def _serialize(po: models.PurchaseOrder) -> dict:
     }
 
 
-@router.get("", response_model=List[schemas.PurchaseOrderResponse])
+@router.get("")
 def list_purchases(db: Session = Depends(get_db), status: str = None, keyword: str = None):
+    """手动序列化：item_name/vendor_name 是 relationship 派生值，response_model 的
+    from_attributes 读不到（会静默落空字符串），必须在这里显式组装。"""
     query = db.query(models.PurchaseOrder)
     if status and status.strip():
         query = query.filter(models.PurchaseOrder.status == status.strip())
     if keyword and keyword.strip():
         query = query.join(models.InventoryItem).filter(models.InventoryItem.name.ilike(f"%{keyword.strip()}%"))
-    return query.order_by(models.PurchaseOrder.created_at.desc()).limit(200).all()
+    pos = query.order_by(models.PurchaseOrder.created_at.desc()).limit(200).all()
+    return [_serialize(po) for po in pos]
 
 
-@router.post("", response_model=schemas.PurchaseOrderResponse)
+@router.post("")
 def create_purchase(payload: schemas.PurchaseOrderCreate, db: Session = Depends(get_db), current_user: models.User = Depends(verify_admin)):
     if payload.quantity <= 0:
         raise HTTPException(status_code=400, detail="采购数量必须大于 0")
@@ -56,10 +59,10 @@ def create_purchase(payload: schemas.PurchaseOrderCreate, db: Session = Depends(
     db.add(po)
     db.commit()
     db.refresh(po)
-    return po
+    return _serialize(po)
 
 
-@router.put("/{po_id}/order", response_model=schemas.PurchaseOrderResponse)
+@router.put("/{po_id}/order")
 def order_purchase(po_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(verify_admin)):
     """下单确认：draft → ordered。"""
     po = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == po_id).first()
@@ -70,10 +73,10 @@ def order_purchase(po_id: int, db: Session = Depends(get_db), current_user: mode
     po.status = "ordered"
     db.commit()
     db.refresh(po)
-    return po
+    return _serialize(po)
 
 
-@router.post("/{po_id}/receive", response_model=schemas.PurchaseOrderResponse)
+@router.post("/{po_id}/receive")
 def receive_purchase(po_id: int, payload: schemas.PurchaseOrderReceive, db: Session = Depends(get_db), current_user: models.User = Depends(verify_admin)):
     """到货确认：生成 INBOUND 流水；分批到货，满额自动 closed（幂等守卫防重复入库）。"""
     po = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == po_id).first()
@@ -83,7 +86,7 @@ def receive_purchase(po_id: int, payload: schemas.PurchaseOrderReceive, db: Sess
         raise HTTPException(status_code=400, detail="草稿状态请先确认下单再录入到货")
     po = svc.receive_purchase(db, po=po, received_qty=payload.received_quantity,
                               note=payload.note, operator_id=current_user.id)
-    return po
+    return _serialize(po)
 
 
 @router.delete("/{po_id}")
