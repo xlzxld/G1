@@ -45,22 +45,25 @@
         <el-table-column prop="unit" label="单位" width="55" />
         <el-table-column label="操作" width="270" fixed="right">
           <template #default="{row}">
-            <el-button v-if="!row.is_archived" size="small" type="success" @click="openMovement(row, 'INBOUND')">入库</el-button>
-            <el-button v-if="!row.is_archived" size="small" type="warning" @click="openMovement(row, 'OUTBOUND')">领料</el-button>
-            <el-button size="small" @click="openMovementsLog(row)">流水</el-button>
-            <el-dropdown v-if="auth.isAdmin || auth.canEdit('inventory')" class="ml-2 align-middle" @command="cmd => handleRowCommand(cmd, row)">
-              <el-button size="small">更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item v-if="!row.is_archived" command="RETURN">退料</el-dropdown-item>
-                  <el-dropdown-item v-if="!row.is_archived" command="RESERVE">预留</el-dropdown-item>
-                  <el-dropdown-item v-if="auth.isAdmin && !row.is_archived" command="STOCKTAKE" divided>盘点</el-dropdown-item>
-                  <el-dropdown-item v-if="auth.isAdmin && !row.is_archived" command="EDIT">编辑主数据</el-dropdown-item>
-                  <el-dropdown-item v-if="auth.isAdmin && !row.is_archived" command="ARCHIVE">归档</el-dropdown-item>
-                  <el-dropdown-item v-if="auth.isAdmin" command="DELETE" class="text-red-500">删除</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <template v-if="auth.canEdit('inventory')">
+              <el-button v-if="!row.is_archived" size="small" type="success" @click="openMovement(row, 'INBOUND')">入库</el-button>
+              <el-button v-if="!row.is_archived" size="small" type="warning" @click="openMovement(row, 'OUTBOUND')">领料</el-button>
+              <el-button size="small" @click="openMovementsLog(row)">流水</el-button>
+              <el-dropdown class="ml-2 align-middle" @command="cmd => handleRowCommand(cmd, row)">
+                <el-button size="small">更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-if="!row.is_archived" command="RETURN">退料</el-dropdown-item>
+                    <el-dropdown-item v-if="!row.is_archived" command="RESERVE">预留</el-dropdown-item>
+                    <el-dropdown-item v-if="auth.isAdmin && !row.is_archived" command="STOCKTAKE" divided>盘点</el-dropdown-item>
+                    <el-dropdown-item v-if="auth.isAdmin && !row.is_archived" command="EDIT">编辑主数据</el-dropdown-item>
+                    <el-dropdown-item v-if="auth.isAdmin && !row.is_archived" command="ARCHIVE">归档</el-dropdown-item>
+                    <el-dropdown-item v-if="auth.isAdmin" command="DELETE" class="text-red-500">删除</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </template>
+            <el-button v-else size="small" @click="openMovementsLog(row)">流水</el-button>
             <el-tag v-if="row.is_archived" type="info" size="small" class="ml-2">已归档</el-tag>
           </template>
         </el-table-column>
