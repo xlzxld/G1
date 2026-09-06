@@ -6,6 +6,17 @@ from routers.auth import get_current_user
 import models, schemas
 
 # Router 级鉴权（8/6 报告 P0-1）
+def sync_legacy_contact_fields(obj):
+    """同 customers：从 contacts JSON 推导全部四个遗留列（含清空场景）。"""
+    first = (obj.contacts or [{}])[0] if obj.contacts else {}
+    obj.contact = (first.get("name") or "") if first else ""
+    methods = (first.get("contact_methods") or []) if first else []
+    by_type = {m.get("type"): m.get("value", "") for m in methods if isinstance(m, dict)}
+    obj.phone = by_type.get("电话", "")
+    obj.wechat = by_type.get("微信", "")
+    obj.email = by_type.get("邮箱", "")
+
+
 router = APIRouter(prefix="/vendors", tags=["vendors"], dependencies=[Depends(get_current_user)])
 
 @router.get("", response_model=List[schemas.VendorResponse])
@@ -36,18 +47,7 @@ def create_vendor(vendor: schemas.VendorCreate, db: Session = Depends(get_db)):
                 raise HTTPException(status_code=400, detail="联系方式的值不能为空")
 
     db_vendor = models.Vendor(**vendor.model_dump())
-    if db_vendor.contacts:
-        db_vendor.contact = db_vendor.contacts[0].get('name', '')
-        # Find the first phone value
-        methods = db_vendor.contacts[0].get('contact_methods', [])
-        phone_val = ""
-        for m in methods:
-            if not phone_val:
-                phone_val = m.get('value', '')
-            if m.get('type') == '电话':
-                phone_val = m.get('value', '')
-                break
-        db_vendor.phone = phone_val
+    sync_legacy_contact_fields(db_vendor)
     db.add(db_vendor)
     db.commit()
     db.refresh(db_vendor)
@@ -81,18 +81,7 @@ def update_vendor(vendor_id: int, vendor: schemas.VendorCreate, db: Session = De
     for key, value in update_data.items():
         setattr(db_vendor, key, value)
         
-    if db_vendor.contacts:
-        db_vendor.contact = db_vendor.contacts[0].get('name', '')
-        # Find the first phone value
-        methods = db_vendor.contacts[0].get('contact_methods', [])
-        phone_val = ""
-        for m in methods:
-            if not phone_val:
-                phone_val = m.get('value', '')
-            if m.get('type') == '电话':
-                phone_val = m.get('value', '')
-                break
-        db_vendor.phone = phone_val
+    sync_legacy_contact_fields(db_vendor)
         
     db.commit()
     db.refresh(db_vendor)
@@ -103,7 +92,12 @@ def delete_vendor(vendor_id: int, db: Session = Depends(get_db)):
     db_vendor = db.query(models.Vendor).filter(models.Vendor.id == vendor_id).first()
     if not db_vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
-        
+
+    # vendor_id 无 FK（Integer 列），删除厂商会让工序上的引用变悬空整数
+    step_refs = db.query(models.ProcessStep).filter(models.ProcessStep.vendor_id == vendor_id).count()
+    if step_refs:
+        raise HTTPException(status_code=400, detail=f"该厂商被 {step_refs} 道工序引用，请先清理工序的外协指向")
+
     db.delete(db_vendor)
     db.commit()
     return {"ok": True}

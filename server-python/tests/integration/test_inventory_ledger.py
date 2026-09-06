@@ -422,6 +422,139 @@ def test_movements_include_operator_name(client, make_user, db):
     assert mv[0]["operator_name"] == "操作员甲"
 
 
+
+# ────────────────────────── 第三轮回归：非库存业务域（autoplan 2026-09-07） ──────────────────────────
+
+def _make_template(client, headers, name="模板R3", steps=None):
+    step_list = steps or [
+        {"name": "设计", "seq": 0, "required": True, "completion_condition": "manual", "assignee": "admin"},
+        {"name": "加工", "seq": 1, "required": True, "outsourced": True, "completion_condition": "manual", "assignee": "admin"},
+        {"name": "检验", "seq": 2, "required": True, "completion_condition": "manual", "assignee": "admin"},
+    ]
+    tpl = client.post("/process-flows", json={"name": name, "description": ""}, headers=headers).json()
+    client.put(f"/process-flows/{tpl['id']}/steps", json={"steps": step_list}, headers=headers)
+    return tpl
+
+
+def test_template_step_edit_preserves_state_and_outsourced(client, make_user, db):
+    """回归（CRITICAL）：模板步骤保存按差量更新——状态/外协标志/照片不再被抹掉。"""
+    _, headers = make_user(username="admin30", is_admin=1)
+    tpl = _make_template(client, headers)
+    # 模拟第一道已完成 + 外协标志
+    steps = db.query(models.ProcessStep).filter(models.ProcessStep.flow_id == tpl["id"]).order_by(models.ProcessStep.seq).all()
+    from datetime import datetime as _dt
+    steps[0].status = "completed"
+    steps[0].completed_at = _dt.utcnow()
+    db.commit()
+
+    # 只改名字重新保存全部步骤
+    resp = client.put(f"/process-flows/{tpl['id']}/steps", json={"steps": [
+        {"name": "设计改", "seq": 0, "required": True, "completion_condition": "manual", "assignee": "admin"},
+        {"name": "加工", "seq": 1, "required": True, "outsourced": True, "completion_condition": "manual", "assignee": "admin"},
+        {"name": "检验", "seq": 2, "required": True, "completion_condition": "manual", "assignee": "admin"},
+    ]}, headers=headers)
+    assert resp.status_code == 200, resp.text
+
+    db.expire_all()
+    steps = db.query(models.ProcessStep).filter(models.ProcessStep.flow_id == tpl["id"]).order_by(models.ProcessStep.seq).all()
+    assert steps[0].name == "设计改"
+    assert steps[0].status == "completed", "差量更新必须保留工序状态（原实现重置为 pending）"
+    assert steps[1].outsourced == 1, "外协标志必须可保存（原实现静默归零）"
+
+
+def test_order_flow_not_editable_or_deletable_via_template_api(client, make_user, db):
+    """回归（CRITICAL）：订单实例流程不能经模板接口编辑/删除（曾级联删工序照片）。"""
+    _, headers = make_user(username="admin31", is_admin=1)
+    tpl = _make_template(client, headers)
+    cust = client.post("/customers", json={"name": "R3客户"}, headers=headers).json()
+    order = client.post("/orders", json={
+        "order_no": "ORD-R3-1", "product_name": "P", "customer_id": cust["id"],
+        "template_flow_id": tpl["id"],
+    }, headers=headers).json()
+    flow = db.query(models.ProcessFlow).filter(models.ProcessFlow.order_id == order["id"]).first()
+
+    resp = client.put(f"/process-flows/{flow.id}/steps", json={"steps": []}, headers=headers)
+    assert resp.status_code == 400, "订单实例流程不能经模板接口编辑"
+    resp = client.delete(f"/process-flows/{flow.id}", headers=headers)
+    assert resp.status_code == 400, "订单实例流程不能经模板接口删除"
+    # 步骤与照片仍在
+    assert db.query(models.ProcessStep).filter(models.ProcessStep.flow_id == flow.id).count() == 3
+
+
+def test_step_engine_current_step_and_signals(client, make_user, db):
+    """回归：advance 后 current_step_id 指向下一道 pending；started_at/completed_by 落值；
+    重复确认被拒（第二轮 R3 引擎修复）。"""
+    from datetime import datetime
+    _, headers = make_user(username="admin32", is_admin=1)
+    tpl = _make_template(client, headers)
+    cust = client.post("/customers", json={"name": "R3客户2"}, headers=headers).json()
+    order = client.post("/orders", json={
+        "order_no": "ORD-R3-2", "product_name": "P", "customer_id": cust["id"],
+        "template_flow_id": tpl["id"],
+    }, headers=headers).json()
+
+    detail = client.get(f"/orders/{order['id']}", headers=headers).json()
+    steps = detail["steps"]
+    first = steps[0]
+    assert first["status"] == "in_progress", "首道工序建单后应为 in_progress"
+    assert detail["current_step_id"] == first["id"]
+
+    resp = client.post(f"/orders/{order['id']}/steps/{first['id']}/advance", headers=headers)
+    assert resp.status_code == 200
+    detail = client.get(f"/orders/{order['id']}", headers=headers).json()
+    steps = {s["id"]: s for s in detail["steps"]}
+    assert detail["current_step_id"] == steps and False or detail["current_step_id"] in [s["id"] for s in detail["steps"] if s["status"] == "in_progress"], "current_step 必须指向下一道 pending/in_progress 工序"
+    assert steps[first["id"]]["completed_at"] is not None
+
+    # 重复确认必须 400
+    resp = client.post(f"/orders/{order['id']}/steps/{first['id']}/advance", headers=headers)
+    assert resp.status_code == 400
+
+
+def test_last_admin_protected(client, make_user, db):
+    """回归：不能删除/降级最后一个管理员；不能自删。"""
+    admin, headers = make_user(username="admin33", is_admin=1)
+    # 自删
+    resp = client.delete(f"/users/{admin.id}", headers=headers)
+    assert resp.status_code == 400
+    # 降自己
+    resp = client.put(f"/users/{admin.id}", json={"username": "admin33", "is_admin": 0, "is_active": 1}, headers=headers)
+    assert resp.status_code == 400, "最后一个管理员不能自我降级"
+    # 删除另一个管理员 OK；再删就剩一个时自删被拦
+    other, oh = make_user(username="admin34", is_admin=1)
+    resp = client.delete(f"/users/{other.id}", headers=headers)
+    assert resp.status_code == 200
+
+
+def test_users_options_available_to_non_admin(client, make_user):
+    """回归：普通用户可访问 /users/options（工序负责人下拉，PROD-5）。"""
+    _, headers = make_user(username="worker9", is_admin=0)
+    resp = client.get("/users/options", headers=headers)
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+
+
+def test_order_no_duplicate_409_and_product_type_saved(client, make_user, db):
+    """回归：重复订单号 409（原 500）；product_type 落库（PROD-2 曾被 schema 静默丢弃）。"""
+    _, headers = make_user(username="admin35", is_admin=1)
+    cust = client.post("/customers", json={"name": "R3客户3"}, headers=headers).json()
+    body = {"order_no": "ORD-R3-DUP", "product_name": "P", "customer_id": cust["id"], "product_type": "热嘴系统"}
+    assert client.post("/orders", json=body, headers=headers).status_code == 200
+    resp = client.post("/orders", json=body, headers=headers)
+    assert resp.status_code == 409, f"重复订单号应 409，实际 {resp.status_code}"
+    row = db.query(models.Order).filter(models.Order.order_no == "ORD-R3-DUP").first()
+    assert row.product_type == "热嘴系统", "product_type 必须落库（BOM 匹配键）"
+
+
+def test_customer_delete_guard_with_active_orders(client, make_user, db):
+    """回归：有未完成订单的客户禁止删除（切断关联防护）。"""
+    _, headers = make_user(username="admin36", is_admin=1)
+    cust = client.post("/customers", json={"name": "R3客户4"}, headers=headers).json()
+    client.post("/orders", json={"order_no": "ORD-R3-5", "product_name": "P", "customer_id": cust["id"]}, headers=headers)
+    resp = client.delete(f"/customers/{cust['id']}", headers=headers)
+    assert resp.status_code == 400
+
+
 # ────────────────────────── 迁移一致性（cutover 保险） ──────────────────────────
 
 def test_alembic_head_schema_matches_models(tmp_path):

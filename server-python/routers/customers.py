@@ -8,13 +8,27 @@ from routers.auth import get_current_user
 import models, schemas
 
 # Router 级鉴权（8/6 报告 P0-1）
+def sync_legacy_contact_fields(obj):
+    """从 contacts JSON 推导全部四个遗留列（含清空场景）。
+    原实现只回填 contact/phone 且 contacts 为空时跳过——wechat/email 永不更新，
+    空联系人列表留下脏数据，订单页展示与搜索因此长期失真。"""
+    first = (obj.contacts or [{}])[0] if obj.contacts else {}
+    obj.contact = (first.get("name") or "") if first else ""
+    methods = (first.get("contact_methods") or []) if first else []
+    by_type = {m.get("type"): m.get("value", "") for m in methods if isinstance(m, dict)}
+    obj.phone = by_type.get("电话", "")
+    obj.wechat = by_type.get("微信", "")
+    obj.email = by_type.get("邮箱", "")
+
+
 router = APIRouter(prefix="/customers", tags=["customers"], dependencies=[Depends(get_current_user)])
 
 @router.get("", response_model=List[schemas.CustomerResponse])
 def get_customers(db: Session = Depends(get_db), skip: int = 0, limit: int = 100, keyword: str = None):
     query = db.query(models.Customer)
     if keyword:
-        kw_like = f"%{keyword}%"
+        esc = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        kw_like = f"%{esc}%"
         query = query.filter(
             or_(
                 models.Customer.name.ilike(kw_like),
@@ -49,18 +63,7 @@ def create_customer(customer: schemas.CustomerCreate, db: Session = Depends(get_
                 raise HTTPException(status_code=400, detail="联系方式的值不能为空")
 
     db_customer = models.Customer(**customer.model_dump())
-    if db_customer.contacts:
-        db_customer.contact = db_customer.contacts[0].get('name', '')
-        # Find the first phone value
-        methods = db_customer.contacts[0].get('contact_methods', [])
-        phone_val = ""
-        for m in methods:
-            if not phone_val:
-                phone_val = m.get('value', '')
-            if m.get('type') == '电话':
-                phone_val = m.get('value', '')
-                break
-        db_customer.phone = phone_val
+    sync_legacy_contact_fields(db_customer)
     db.add(db_customer)
     db.commit()
     db.refresh(db_customer)
@@ -101,18 +104,7 @@ def update_customer(customer_id: int, customer: schemas.CustomerCreate, db: Sess
     for key, value in update_data.items():
         setattr(db_customer, key, value)
     
-    if db_customer.contacts:
-        db_customer.contact = db_customer.contacts[0].get('name', '')
-        # Find the first phone value
-        methods = db_customer.contacts[0].get('contact_methods', [])
-        phone_val = ""
-        for m in methods:
-            if not phone_val:
-                phone_val = m.get('value', '')
-            if m.get('type') == '电话':
-                phone_val = m.get('value', '')
-                break
-        db_customer.phone = phone_val
+    sync_legacy_contact_fields(db_customer)
     
     db.commit()
     db.refresh(db_customer)
@@ -123,7 +115,14 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
     if not db_customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    
+
+    active_orders = db.query(models.Order).filter(
+        models.Order.customer_id == customer_id,
+        models.Order.status != "completed",
+    ).count()
+    if active_orders:
+        raise HTTPException(status_code=400, detail=f"该客户名下有 {active_orders} 张未完成订单，删除会切断订单的客户关联，请先完成或转移订单")
+
     db.delete(db_customer)
     db.commit()
     return {"ok": True}

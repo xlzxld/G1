@@ -46,6 +46,7 @@ app.include_router(process.router)
 app.include_router(documents.router)
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(users.options_router)
 app.include_router(dashboard.router)
 app.include_router(settings.router)
 app.include_router(vendors.router)
@@ -238,31 +239,38 @@ async def audit_log_middleware(request: Request, call_next):
             # 宽容解析：审计仅做归属，不阻断响应
             from routers.auth import try_decode_user_id
             user_id = try_decode_user_id(auth_header[7:])
-                
-        db = SessionLocal()
-        try:
-            action = "create" if request.method == "POST" else "update" if request.method == "PUT" else "delete"
-            detail_text = get_friendly_detail(request.method, path, db)
-            parts = path.strip("/").split("/")
-            # entity_id：路径中的数字段（/inventory/{id}/movements → id）
-            entity_id = None
-            for seg in parts[1:]:
-                if seg.isdigit():
-                    entity_id = int(seg)
-                    break
-            audit = models.AuditLog(
-                user_id=user_id,
-                action=action,
-                entity_type=parts[0] if parts and parts[0] else "unknown",
-                entity_id=entity_id,
-                detail=detail_text
-            )
-            db.add(audit)
-            db.commit()
-        except Exception as e:
-            import logging
-            logging.getLogger("audit").warning("Audit log failed for %s %s: %s", request.method, path, e)
-        finally:
-            db.close()
-            
+
+        from starlette.concurrency import run_in_threadpool
+
+        def _write_audit():
+            # 同步 DB 查询/写入移到线程池执行（原实现直接跑在事件循环上，
+            # 每个写请求阻塞 2-4 次查询 + 1 次提交的延迟）
+            db = SessionLocal()
+            try:
+                action = "create" if request.method == "POST" else "update" if request.method == "PUT" else "delete"
+                detail_text = get_friendly_detail(request.method, path, db)
+                parts = path.strip("/").split("/")
+                # entity_id：路径中的数字段（/inventory/{id}/movements → id）
+                entity_id = None
+                for seg in parts[1:]:
+                    if seg.isdigit():
+                        entity_id = int(seg)
+                        break
+                audit = models.AuditLog(
+                    user_id=user_id,
+                    action=action,
+                    entity_type=parts[0] if parts and parts[0] else "unknown",
+                    entity_id=entity_id,
+                    detail=detail_text
+                )
+                db.add(audit)
+                db.commit()
+            except Exception as e:
+                import logging
+                logging.getLogger("audit").warning("Audit log failed for %s %s: %s", request.method, path, e)
+            finally:
+                db.close()
+
+        await run_in_threadpool(_write_audit)
+
     return response

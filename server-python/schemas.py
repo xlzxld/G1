@@ -107,6 +107,8 @@ class DocumentStatusUpdate(BaseModel):
 class OrderBase(BaseModel):
     order_no: str
     product_name: str
+    # BOM 匹配键（受控枚举）；此前前端提交但 schema 无此字段被 Pydantic 静默丢弃
+    product_type: str = ""
     priority: int = 0
     status: str = "in_progress"
     shipment_date: Optional[datetime] = None

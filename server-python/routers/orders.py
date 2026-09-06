@@ -11,6 +11,7 @@ import models, schemas
 router = APIRouter(prefix="/orders", tags=["orders"], dependencies=[Depends(get_current_user)])
 
 from sqlalchemy import or_, desc, asc
+from sqlalchemy.exc import IntegrityError
 
 from sqlalchemy.orm import joinedload
 
@@ -48,7 +49,8 @@ def get_orders(
         
     total = query.count()
     
-    if sort_by and hasattr(models.Order, sort_by):
+    sortable_orders = {'order_no', 'product_name', 'priority', 'status', 'created_at', 'updated_at', 'shipment_date'}
+    if sort_by in sortable_orders:
         column = getattr(models.Order, sort_by)
         if sort_order == 'asc':
             query = query.order_by(asc(column))
@@ -94,6 +96,9 @@ def create_order(order: schemas.OrderCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="关联客户不能为空")
         
     order_data = order.model_dump(exclude={"template_flow_id"})
+    if order.customer_id and not db.query(models.Customer).filter(models.Customer.id == order.customer_id).first():
+        raise HTTPException(status_code=400, detail="关联客户不存在")
+
     order_data["status"] = "in_progress"
     
     # 同步客户名称，解决冗余字段搜索不一致问题
@@ -103,7 +108,11 @@ def create_order(order: schemas.OrderCreate, db: Session = Depends(get_db)):
         
     db_order = models.Order(**order_data)
     db.add(db_order)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"订单号 {order_data.get('order_no')} 已存在（含并发创建）")
     db.refresh(db_order)
     
     if order.template_flow_id:
@@ -116,10 +125,10 @@ def create_order(order: schemas.OrderCreate, db: Session = Depends(get_db)):
                 order_id=db_order.id
             )
             db.add(new_flow)
-            db.commit()
-            db.refresh(new_flow)
-            
+            db.flush()
+
             template_steps = db.query(models.ProcessStep).filter(models.ProcessStep.flow_id == template_flow.id).order_by(models.ProcessStep.seq).all()
+            first_step = None
             for ts in template_steps:
                 new_step = models.ProcessStep(
                     flow_id=new_flow.id,
@@ -132,13 +141,19 @@ def create_order(order: schemas.OrderCreate, db: Session = Depends(get_db)):
                     status="pending"
                 )
                 db.add(new_step)
-            db.commit()
-            
-            # Set the first step as current step
-            first_step = db.query(models.ProcessStep).filter(models.ProcessStep.flow_id == new_flow.id).order_by(models.ProcessStep.seq).first()
+                if first_step is None:
+                    db.flush()
+                    first_step = new_step
+
+            # 首个 pending 工序进入 in_progress 并成为 current（引擎信号修复）
             if first_step:
+                first_step.status = "in_progress"
+                from datetime import datetime as _dt
+                first_step.started_at = _dt.utcnow()
                 db_order.current_step_id = first_step.id
-                db.commit()
+
+            # 单事务提交（原 4 次 commit，中途失败会留半态订单）
+            db.commit()
 
     # 触发通知规则引擎
     try:
@@ -301,31 +316,56 @@ def update_order_status(order_id: int, payload: StatusUpdate, db: Session = Depe
 
     prev_status = order.status
     order.status = payload.status
-    # 订单完成不再触碰库存（D16）；只保留业务通知
-    if payload.status == "completed" and prev_status != "completed":
-        _notify_order_completed(order, db)
+    should_notify = payload.status == "completed" and prev_status != "completed"
 
     db.commit()
+    # 通知在提交后触发（规则引擎内含 commit，提前调用会预落状态/破坏事务边界）
+    if should_notify:
+        _notify_order_completed(order, db)
     return {"ok": True}
 
 @router.post("/{order_id}/steps/{step_id}/advance")
-def advance_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
+def advance_step(order_id: int, step_id: int, db: Session = Depends(get_db),
+                 current_user: models.User = Depends(get_current_user)):
     step = db.query(models.ProcessStep).filter(models.ProcessStep.id == step_id, models.ProcessStep.flow_id == db.query(models.ProcessFlow.id).filter(models.ProcessFlow.order_id == order_id).scalar_subquery()).first()
     if not step:
         raise HTTPException(status_code=404, detail="Step not found")
-        
+    if step.status in ('completed', 'skipped'):
+        raise HTTPException(status_code=400, detail="该工序已完成或已跳过，不能重复确认")
+
     if step.completion_condition == 'photo':
         doc_count = db.query(models.Document).filter(models.Document.step_id == step_id).count()
         if doc_count == 0:
             raise HTTPException(status_code=400, detail="必须为本工序上传实操/检验照片才能确认完成")
-            
+
     from datetime import datetime
+    # order 行锁：串行化并发完成最后两道工序的死锁竞态
+    order = db.query(models.Order).filter(models.Order.id == order_id).with_for_update().first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
     step.status = 'completed'
     step.completed_at = datetime.utcnow()
-    
-    # Also update order current_step_id if we want to track it
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
-    order.current_step_id = step.id
+    step.completed_by = current_user.id
+    if not step.started_at:
+        step.started_at = step.completed_at
+
+    # current_step_id 指向下一道 pending 工序（原实现指向刚完成的工序）
+    next_step = (
+        db.query(models.ProcessStep)
+        .filter(
+            models.ProcessStep.flow_id == step.flow_id,
+            models.ProcessStep.status == 'pending',
+            models.ProcessStep.seq > step.seq,
+        )
+        .order_by(models.ProcessStep.seq)
+        .first()
+    )
+    order.current_step_id = next_step.id if next_step else None
+    if next_step:
+        next_step.status = 'in_progress'
+        if not next_step.started_at:
+            next_step.started_at = datetime.utcnow()
     
     # If all steps (including non-required ones) are completed or skipped, we auto-complete the order
     flow = db.query(models.ProcessFlow).filter(models.ProcessFlow.order_id == order_id).first()
@@ -338,10 +378,14 @@ def advance_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
     if all_completed:
         prev_status = order.status
         order.status = 'completed'
-        if prev_status != 'completed':
-            _notify_order_completed(order, db)
+        order.current_step_id = None
+        should_notify = prev_status != 'completed'
+    else:
+        should_notify = False
 
     db.commit()
+    if should_notify:
+        _notify_order_completed(order, db)
     return {"ok": True}
 
 @router.post("/{order_id}/steps/{step_id}/rollback")
@@ -349,11 +393,15 @@ def rollback_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
     step = db.query(models.ProcessStep).filter(models.ProcessStep.id == step_id, models.ProcessStep.flow_id == db.query(models.ProcessFlow.id).filter(models.ProcessFlow.order_id == order_id).scalar_subquery()).first()
     if not step:
         raise HTTPException(status_code=404, detail="Step not found")
-    step.status = 'pending'
+    step.status = 'in_progress'
     step.completed_at = None
+    step.completed_by = None
 
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    order = db.query(models.Order).filter(models.Order.id == order_id).with_for_update().first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
     order.status = 'in_progress'
+    order.current_step_id = step.id
 
     db.commit()
     return {"ok": True}
@@ -365,10 +413,30 @@ def skip_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Step not found")
     if step.required:
         raise HTTPException(status_code=400, detail="必做工序不能跳过")
+    if step.status in ('completed', 'skipped'):
+        raise HTTPException(status_code=400, detail="该工序已终态，不能跳过")
     step.status = 'skipped'
-    
+
     # Check if this triggers order auto-completion
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    order = db.query(models.Order).filter(models.Order.id == order_id).with_for_update().first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    next_step = (
+        db.query(models.ProcessStep)
+        .filter(
+            models.ProcessStep.flow_id == step.flow_id,
+            models.ProcessStep.status == 'pending',
+            models.ProcessStep.seq > step.seq,
+        )
+        .order_by(models.ProcessStep.seq)
+        .first()
+    )
+    order.current_step_id = next_step.id if next_step else None
+    if next_step:
+        next_step.status = 'in_progress'
+        if not next_step.started_at:
+            from datetime import datetime as _dt
+            next_step.started_at = _dt.utcnow()
     flow = db.query(models.ProcessFlow).filter(models.ProcessFlow.order_id == order_id).first()
     all_steps = db.query(models.ProcessStep).filter(models.ProcessStep.flow_id == flow.id).order_by(models.ProcessStep.seq).all()
     all_completed = True
@@ -379,10 +447,14 @@ def skip_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
     if all_completed:
         prev_status = order.status
         order.status = 'completed'
-        if prev_status != 'completed':
-            _notify_order_completed(order, db)
+        order.current_step_id = None
+        should_notify = prev_status != 'completed'
+    else:
+        should_notify = False
 
     db.commit()
+    if should_notify:
+        _notify_order_completed(order, db)
     return {"ok": True}
 
 # ────────────────────────── 订单用料（零配件）管理 ──────────────────────────
@@ -500,7 +572,8 @@ def locate_order_page(
     if not target_order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if sort_by and hasattr(models.Order, sort_by):
+    sortable_orders = {'order_no', 'product_name', 'priority', 'status', 'created_at', 'updated_at', 'shipment_date'}
+    if sort_by in sortable_orders:
         column = getattr(models.Order, sort_by)
         if sort_order == 'asc':
             query = query.order_by(asc(column))

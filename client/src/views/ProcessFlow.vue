@@ -71,6 +71,9 @@
           <el-table-column label="必做" width="70" align="center">
             <template #default="{ row }"><el-switch v-model="row.required" size="small" /></template>
           </el-table-column>
+          <el-table-column label="外协" width="70" align="center">
+            <template #default="{ row }"><el-switch v-model="row.outsourced" size="small" /></template>
+          </el-table-column>
           <el-table-column label="完成条件" width="130">
             <template #default="{ row }">
               <el-select v-model="row.completion_condition" size="small">
@@ -232,7 +235,7 @@ watch(() => route.query.highlight, async (newVal) => {
 
 onMounted(async () => {
   try {
-    const r = await api.get('/users');
+    const r = await api.get('/users/options');
     users.value = r.data;
   } catch {}
 });
@@ -281,13 +284,12 @@ async function selectFlow(row) {
   selectedFlow.value = row;
   const r = await api.get(`/process-flows/${row.id}`);
   steps.value = (r.data.steps || []).map((s, i) => ({
-    id: s.id, name: s.name, seq: i, required: !!s.required, can_parallel: !!s.can_parallel,
+    id: s.id, name: s.name, seq: i, required: !!s.required, outsourced: !!s.outsourced,
     completion_condition: s.completion_condition || 'manual', assignee: s.assignee || '',
-    depends_on_step_id: s.depends_on_step_id || null, depends_on_idx: null,
   }));
 }
 
-function addStep() { steps.value.push({ name: '', seq: steps.value.length, required: true, can_parallel: false, completion_condition: 'manual', assignee: '', depends_on_step_id: null, depends_on_idx: null }); }
+function addStep() { steps.value.push({ name: '', seq: steps.value.length, required: true, outsourced: false, completion_condition: 'manual', assignee: '' }); }
 
 async function saveSteps() {
   if (steps.value.some(s => !s.name || !s.name.trim())) {
@@ -299,7 +301,7 @@ async function saveSteps() {
   savingSteps.value = true;
   try {
     const payload = steps.value.map((s, i) => ({
-      name: s.name, seq: i, required: !!s.required, can_parallel: !!s.can_parallel,
+      name: s.name, seq: i, required: !!s.required, outsourced: !!s.outsourced,
       completion_condition: s.completion_condition || 'manual', assignee: s.assignee || '',
     }));
     await api.put(`/process-flows/${selectedFlow.value.id}/steps`, { steps: payload });

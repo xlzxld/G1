@@ -17,7 +17,7 @@
           :class="['p-3 rounded-lg transition-all duration-300', highlightedId === n.id ? 'highlight-flash' : '']"
         >
           <div style="display:flex;align-items:center;gap:8px">
-            <el-tag size="small" :type="n.source==='auto'?'warning':'info'">{{ n.source==='auto'?'自动':'手动' }}</el-tag>
+            <el-tag size="small" :type="(n.source==='auto'||n.source==='system')?'warning':'info'">{{ (n.source==='auto'||n.source==='system')?'自动':'手动' }}</el-tag>
             <strong>{{ n.title }}</strong>
             <el-tag v-if="!n.is_read" size="small" type="danger" effect="dark">NEW</el-tag>
           </div>
@@ -108,7 +108,7 @@ function handleNotifPageChange() {
 onMounted(async () => {
   await fetchNotifs();
   try {
-    users.value = (await api.get('/users')).data;
+    users.value = (await api.get('/users/options')).data;
   } catch {}
   
   if (route.query.highlight) {

@@ -5,7 +5,7 @@ from database import get_db
 import models, schemas
 import bcrypt
 # 鉴权单一来源（8/6 报告 P0-4：删除本文件的复制实现，统一走 auth.verify_admin，含 is_active/token_version 校验）
-from routers.auth import verify_admin
+from routers.auth import verify_admin, get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(verify_admin)])
 
@@ -43,10 +43,13 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_user)
     
-    if db_user.is_admin == 1:
+    if db_user.is_admin == 1 and not was_admin:
         grant_admin_permissions(db_user.id, db)
         db.refresh(db_user)
-        
+    elif not db_user.is_admin and was_admin:
+        # 降权时清空页面权限（原实现只在升权时发放，降级后仍持全量权限）
+        db.query(models.PagePermission).filter(models.PagePermission.user_id == db_user.id).delete()
+
     return db_user
 
 @router.put("/{user_id}", response_model=schemas.UserResponse)
@@ -58,6 +61,14 @@ def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(ge
     if not user.username or not user.username.strip():
         raise HTTPException(status_code=400, detail="用户名不能为空")
     
+    if db_user.is_admin == 1 and (user.is_admin != 1 or not user.is_active):
+        remaining_admins = db.query(models.User).filter(
+            models.User.is_admin == 1, models.User.is_active == 1, models.User.id != user_id
+        ).count()
+        if remaining_admins < 1:
+            raise HTTPException(status_code=400, detail="不能降级或停用最后一个管理员")
+
+    was_admin = db_user.is_admin == 1
     db_user.username = user.username
     db_user.is_admin = user.is_admin
     db_user.is_active = user.is_active
@@ -74,17 +85,37 @@ def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(ge
     db.commit()
     db.refresh(db_user)
     
-    if db_user.is_admin == 1:
+    if db_user.is_admin == 1 and not was_admin:
         grant_admin_permissions(db_user.id, db)
         db.refresh(db_user)
-        
+    elif not db_user.is_admin and was_admin:
+        # 降权时清空页面权限（原实现只在升权时发放，降级后仍持全量权限）
+        db.query(models.PagePermission).filter(models.PagePermission.user_id == db_user.id).delete()
+
     return db_user
 
+# 独立子路由：/users 前缀的 Router 级 verify_admin 会拦截一切路由，
+# options 必须挂在不带管理员门禁的 router 上（普通用户拉负责人下拉用）
+options_router = APIRouter(prefix="/users", tags=["users"])
+
+
+@options_router.get("/options")
+def get_user_options(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    users = db.query(models.User).filter(models.User.is_active == 1).order_by(models.User.username).all()
+    return [{"id": u.id, "username": u.username} for u in users]
+
+
 @router.delete("/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+def delete_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能删除自己的账号")
+    if db_user.is_admin == 1 and db.query(models.User).filter(
+        models.User.is_admin == 1, models.User.is_active == 1, models.User.id != user_id
+    ).count() < 1:
+        raise HTTPException(status_code=400, detail="不能删除最后一个管理员")
     db.delete(db_user)
     db.commit()
     return {"ok": True}

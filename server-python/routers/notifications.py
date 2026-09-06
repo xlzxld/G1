@@ -193,6 +193,8 @@ def trigger_notification_rules(event: str, context: dict, db: Session):
                             if str(field_val).strip() != str(cond_val).strip(): condition_matched = False
                         elif op == "contains":
                             if str(cond_val) not in str(field_val): condition_matched = False
+                        else:
+                            condition_matched = False  # 未知操作符默认不匹配（原实现静默全匹配）
                     except Exception:
                         condition_matched = False
                 else:
@@ -239,6 +241,7 @@ def trigger_notification_rules(event: str, context: dict, db: Session):
                     
             # 5. 创建通知（from_user_id 可空：系统规则通知没有真实发送人，
             #    不再假设 id=1 用户存在——那是对 seed 顺序的隐性依赖）
+            notified_this_rule = []
             for uid in to_user_ids:
                 new_notif = models.Notification(
                     from_user_id=None,  # 系统账号
@@ -254,10 +257,14 @@ def trigger_notification_rules(event: str, context: dict, db: Session):
                     is_read=0
                 )
                 db.add(new_notif)
-                
+                notified_this_rule.append(uid)
+
+            # 逐规则实时推送（原实现在规则循环外只推最后一条的接收人）
+            for uid in notified_this_rule:
+                manager.notify_user(uid)
+
         db.commit()
-        # 触发实时推送更新
-        for uid in to_user_ids:
-            manager.notify_user(uid)
     except Exception as e:
-        print(f"Trigger notification rules error: {e}")
+        db.rollback()
+        import logging
+        logging.getLogger('notifications').warning('Trigger notification failed: %s', e)
