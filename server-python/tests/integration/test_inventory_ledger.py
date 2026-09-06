@@ -329,6 +329,99 @@ def test_ledger_consistency_after_operations(client, make_user, db):
     assert result["drift"] == 0, "缓存列必须等于 SUM(流水)"
 
 
+
+# ────────────────────────── 第二轮优化回归（autoplan 2026-09-07） ──────────────────────────
+
+def test_password_reset_bumps_token_version(client, make_user, db):
+    """回归：改密/停用必须吊销已签发 Token（第二轮 ENG-2）。"""
+    user, headers = make_user(username="resetme", is_admin=1)
+    old_ver = user.token_version
+    resp = client.put(f"/users/{user.id}", json={
+        "username": "resetme", "password": "newpass", "is_admin": 1, "is_active": 1,
+    }, headers=headers)
+    assert resp.status_code == 200
+    db.refresh(user)
+    assert user.token_version > old_ver, "改密后 token_version 必须递增（旧 Token 全部失效）"
+
+
+def test_order_status_enum_rejected(client, make_user, db):
+    """回归：无效状态字符串必须 400（第二轮：任意字符串曾可入库）。"""
+    _, headers = make_user(username="admin21", is_admin=1)
+    order_id = _make_order(client, headers, db, "ORD-T9")
+    resp = client.put(f"/orders/{order_id}/status", json={"status": "hacked_status"}, headers=headers)
+    assert resp.status_code == 400
+
+
+def test_stocktake_below_reserved_blocked(client, make_user, db):
+    """回归：实盘 < 已预留必须拒绝（第二轮 PROD-6，防预留变幻影）。"""
+    _, headers = make_user(username="admin22", is_admin=1)
+    item_id = client.post("/inventory", json={"name": "盘点守卫料", "total": 20}, headers=headers).json()["id"]
+    order_id = _make_order(client, headers, db, "ORD-T10")
+    client.post("/inventory/reserve", json={"item_id": item_id, "order_id": order_id, "quantity": 8}, headers=headers)
+    resp = client.post(f"/inventory/{item_id}/movements",
+                       json={"type": "ADJUSTMENT", "quantity": 5}, headers=headers)
+    assert resp.status_code == 400, "实盘 5 < 预留 8 必须拒绝"
+    assert client.get(f"/inventory/{item_id}", headers=headers).json()["total"] == 20
+
+
+def test_archive_blocked_with_open_po(client, make_user, db):
+    """回归：有未完结 PO 的物料禁止归档（第二轮 ENG-10/PROD-4 死锁防护）。"""
+    from services import inventory_service as svc
+    user, headers = make_user(username="admin23", is_admin=1)
+    item = svc.create_item_with_opening(db, name="归档守卫料", opening_qty=5, operator_id=user.id)
+    po = models.PurchaseOrder(po_no="PO-G1", item_id=item.id, quantity=3, status="ordered")
+    db.add(po)
+    db.commit()
+    resp = client.post(f"/inventory/{item.id}/archive", headers=headers)
+    assert resp.status_code == 400, "未完结 PO 存在时归档必须拒绝"
+    # 取消 PO 后可以归档
+    client.put(f"/purchases/{po.id}/cancel", json={"note": "QA"}, headers=headers)
+    resp = client.post(f"/inventory/{item.id}/archive", headers=headers)
+    assert resp.status_code == 200
+
+
+def test_po_receive_idempotency_and_batch(client, make_user, db):
+    """回归：到货超剩余量拒绝 + 单事务 + 批次号落流水（第二轮 ENG-4/PROD-8）。"""
+    _, headers = make_user(username="admin24", is_admin=1)
+    item_id = client.post("/inventory", json={"name": "PO幂等料", "total": 0}, headers=headers).json()["id"]
+    po = client.post("/purchases", json={"item_id": item_id, "quantity": 5}, headers=headers).json()
+    client.put(f"/purchases/{po['id']}/order", headers=headers)
+    client.post(f"/purchases/{po['id']}/receive", json={"received_quantity": 3, "batch_no": "B1"}, headers=headers)
+    resp = client.post(f"/purchases/{po['id']}/receive", json={"received_quantity": 3}, headers=headers)
+    assert resp.status_code == 400, "超剩余量到货必须拒绝"
+    assert client.get(f"/inventory/{item_id}", headers=headers).json()["total"] == 3
+    client.post(f"/purchases/{po['id']}/receive", json={"received_quantity": 2, "batch_no": "B2"}, headers=headers)
+    resp = client.put(f"/purchases/{po['id']}/cancel", json={"note": "x"}, headers=headers)
+    assert resp.status_code == 400, "已完结采购单不可取消"
+    mv = client.get(f"/inventory/{item_id}/movements", headers=headers).json()
+    assert any(m["batch_no"] == "B1" for m in mv), "到货批次号必须写入流水"
+
+
+def test_release_completed_order_reservations(client, make_user, db):
+    """回归：完成单释放剩余预留端点（第二轮 PROD-2，驾驶舱死端告警解决动作）。"""
+    _, headers = make_user(username="admin25", is_admin=1)
+    item_id = client.post("/inventory", json={"name": "释放预留料", "total": 30}, headers=headers).json()["id"]
+    order_id = _make_order(client, headers, db, "ORD-T11")
+    client.post("/inventory/reserve", json={"item_id": item_id, "order_id": order_id, "quantity": 6}, headers=headers)
+    client.put(f"/orders/{order_id}/status", json={"status": "completed"}, headers=headers)
+    resp = client.post(f"/orders/{order_id}/release-reservations", headers=headers)
+    assert resp.status_code == 200 and resp.json()["released"] == 1
+    item = client.get(f"/inventory/{item_id}", headers=headers).json()
+    assert item["reserved"] == 0, "释放后 reserved 必须归零"
+    order2 = _make_order(client, headers, db, "ORD-T12")
+    resp = client.post(f"/orders/{order2}/release-reservations", headers=headers)
+    assert resp.status_code == 400, "在制订单调用释放必须拒绝"
+
+
+def test_movements_include_operator_name(client, make_user, db):
+    """回归：流水返回操作人姓名（第二轮 PROD-7）。"""
+    user, headers = make_user(username="操作员甲", is_admin=1)
+    item_id = client.post("/inventory", json={"name": "操作人料", "total": 0}, headers=headers).json()["id"]
+    client.post(f"/inventory/{item_id}/movements", json={"type": "INBOUND", "quantity": 5}, headers=headers)
+    mv = client.get(f"/inventory/{item_id}/movements", headers=headers).json()
+    assert mv[0]["operator_name"] == "操作员甲"
+
+
 # ────────────────────────── 迁移一致性（cutover 保险） ──────────────────────────
 
 def test_alembic_head_schema_matches_models(tmp_path):
