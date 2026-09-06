@@ -131,7 +131,7 @@ async function fetchList() {
   } finally { loading.value = false; }
 }
 async function fetchReplenish() {
-  try { replenish.value = await api.get('/inventory/replenish').data; } catch (e) { console.error(e); }
+  try { replenish.value = (await api.get('/inventory/replenish')).data; } catch (e) { console.error(e); }
 }
 async function fetchOptions() {
   try {
