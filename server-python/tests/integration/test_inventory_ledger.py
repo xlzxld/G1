@@ -555,6 +555,106 @@ def test_customer_delete_guard_with_active_orders(client, make_user, db):
     assert resp.status_code == 400
 
 
+
+# ────────────────────────── T7 外协生命周期回归 ──────────────────────────
+
+def _vendor_id(client, headers):
+    vendors = client.get("/vendors", headers=headers).json()
+    if vendors:
+        return vendors[0]["id"]
+    created = client.post("/vendors", json={"name": "T7测试外协厂", "contact": "张工"}, headers=headers).json()
+    return created["id"]
+
+
+def test_outsource_lifecycle(client, make_user, db):
+    """T7：发外协 → 外协中禁完成 → 收回记成本 → 详情回传外协字段 → 总览汇总。"""
+    _, headers = make_user(username="admin40", is_admin=1)
+    tpl = _make_template(client, headers, name="外协模板T7")
+    cust = client.post("/customers", json={"name": "T7测试客户"}, headers=headers).json()
+    order = client.post("/orders", json={
+        "order_no": "ORD-T7-T", "product_name": "外协测试件", "customer_id": cust["id"],
+        "template_flow_id": tpl["id"],
+    }, headers=headers).json()
+    detail = client.get(f"/orders/{order['id']}", headers=headers).json()
+    step = detail["steps"][0]
+    vrow = client.post("/vendors", json={"name": "T7测试外协厂", "contact": "张工"}, headers=headers).json()
+    vid = vrow["id"]
+
+    # 发外协
+    resp = client.post(f"/orders/{order['id']}/steps/{step['id']}/outsource",
+                       json={"vendor_id": vid}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    db.expire_all()
+    row = db.query(models.ProcessStep).get(step["id"])
+    assert row.status == "outsourced" and row.vendor_id == vid and row.sent_date is not None
+
+    # 详情接口回传外协字段（前端"外协中·厂商"徽标依赖）
+    detail = client.get(f"/orders/{order['id']}", headers=headers).json()
+    s0 = next(s for s in detail["steps"] if s["id"] == step["id"])
+    assert s0["vendor_id"] == vid and s0["vendor_name"] == "T7测试外协厂"
+
+    # 外协中禁止确认完成
+    resp = client.post(f"/orders/{order['id']}/steps/{step['id']}/advance", headers=headers)
+    assert resp.status_code == 400 and "外协" in resp.json()["detail"]
+
+    # 重复发出拒绝
+    resp = client.post(f"/orders/{order['id']}/steps/{step['id']}/outsource",
+                       json={"vendor_id": vid}, headers=headers)
+    assert resp.status_code == 400
+
+    # 收回（带成本）
+    resp = client.post(f"/orders/{order['id']}/steps/{step['id']}/outsource-return",
+                       json={"cost": 350.5}, headers=headers)
+    assert resp.status_code == 200
+    db.expire_all()
+    row = db.query(models.ProcessStep).get(step["id"])
+    assert row.status == "in_progress" and row.return_date is not None and row.cost == 350.5
+
+    # 详情接口回传外协费用（前端"外协费 ¥"徽标依赖）
+    detail = client.get(f"/orders/{order['id']}", headers=headers).json()
+    s0 = next(s for s in detail["steps"] if s["id"] == step["id"])
+    assert s0["cost"] == 350.5
+
+    # 总览：active 为 0（已收回），成本汇总含该厂商
+    ov = client.get("/vendors/outsourcing/overview", headers=headers).json()
+    assert ov["active_count"] == 0
+    assert any(c["vendor_id"] == vid and c["total_cost"] >= 350.5 for c in ov["costs"])
+    assert ov["total_cost"] >= 350.5
+
+
+def test_outsource_guards(client, make_user, db):
+    """T7 守卫：不存在的厂商 404；非外协工序不能收回；外协中禁跳过/撤回。"""
+    _, headers = make_user(username="admin41", is_admin=1)
+    tpl = _make_template(client, headers, name="外协守卫模板", steps=[
+        {"name": "可选加工", "seq": 0, "required": False, "completion_condition": "manual", "assignee": "admin"},
+    ])
+    cust = client.post("/customers", json={"name": "T7守卫客户"}, headers=headers).json()
+    order = client.post("/orders", json={
+        "order_no": "ORD-T7-G", "product_name": "P", "customer_id": cust["id"],
+        "template_flow_id": tpl["id"],
+    }, headers=headers).json()
+    detail = client.get(f"/orders/{order['id']}", headers=headers).json()
+    step = detail["steps"][0]
+
+    resp = client.post(f"/orders/{order['id']}/steps/{step['id']}/outsource",
+                       json={"vendor_id": 999999}, headers=headers)
+    assert resp.status_code == 404
+
+    resp = client.post(f"/orders/{order['id']}/steps/{step['id']}/outsource-return",
+                       json={"cost": 1}, headers=headers)
+    assert resp.status_code == 400, "非外协工序收回必须 400"
+
+    # 发出后：跳过/撤回均被拒（件在厂商处，必须走收回流程）
+    vid = _vendor_id(client, headers)
+    resp = client.post(f"/orders/{order['id']}/steps/{step['id']}/outsource",
+                       json={"vendor_id": vid}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    resp = client.post(f"/orders/{order['id']}/steps/{step['id']}/skip", headers=headers)
+    assert resp.status_code == 400 and "外协" in resp.json()["detail"]
+    resp = client.post(f"/orders/{order['id']}/steps/{step['id']}/rollback", headers=headers)
+    assert resp.status_code == 400 and "外协" in resp.json()["detail"]
+
+
 # ────────────────────────── 迁移一致性（cutover 保险） ──────────────────────────
 
 def test_alembic_head_schema_matches_models(tmp_path):

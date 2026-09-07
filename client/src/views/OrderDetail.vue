@@ -99,6 +99,8 @@
                           <span>负责人: {{ step.assignee || '未分配' }}</span>
                           <span v-if="completionInfo(step)" class="hidden sm:inline">•</span>
                           <span v-if="completionInfo(step)" class="text-slate-400 dark:text-slate-500">{{ completionInfo(step) }}</span>
+                          <span v-if="step.status === 'outsourced'" class="ml-2 px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 text-xs font-bold">外协中 · {{ stepVendorName(step) }}</span>
+                          <span v-if="step.cost != null" class="ml-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs">外协费 ¥{{ step.cost }}</span>
                         </div>
 
                         <!-- 工序照片展示 -->
@@ -118,9 +120,11 @@
                       </div>
                       
                       <!-- Action Panel for Active Step -->
-                      <div v-if="canAct(step) && auth.canEdit('orders')" class="flex gap-2 w-full sm:w-auto mt-1 sm:mt-0 justify-end">
-                        <button v-if="step.status !== 'completed' && step.completion_condition !== 'photo'" @click="doAdvance(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded-lg hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold shadow-sm flex-1 sm:flex-none">完成工序</button>
-                        <button v-if="step.status !== 'completed' && step.completion_condition === 'photo'" @click="openPhotoUpload(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded-lg hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold shadow-sm flex items-center justify-center gap-1 flex-1 sm:flex-none">
+                      <div v-if="canAct(step) && auth.canEdit('orders')" class="flex gap-2 w-full sm:w-auto mt-1 sm:mt-0 justify-end flex-wrap">
+                        <button v-if="step.status === 'pending' || step.status === 'in_progress'" @click="openOutsource(step)" class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-700/50 rounded-lg hover:bg-purple-600 hover:text-white dark:hover:bg-purple-700 transition text-xs font-bold shadow-sm flex-1 sm:flex-none">发外协</button>
+                        <button v-if="step.status === 'outsourced'" @click="openOutsourceReturn(step)" class="px-3 py-1.5 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-700/50 rounded-lg hover:bg-green-600 hover:text-white dark:hover:bg-green-700 transition text-xs font-bold shadow-sm flex-1 sm:flex-none">收回外协件</button>
+                        <button v-if="step.status !== 'completed' && step.status !== 'outsourced' && step.completion_condition !== 'photo'" @click="doAdvance(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded-lg hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold shadow-sm flex-1 sm:flex-none">完成工序</button>
+                        <button v-if="step.status !== 'completed' && step.status !== 'outsourced' && step.completion_condition === 'photo'" @click="openPhotoUpload(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-50 dark:bg-industrial-accent/20 text-blue-600 dark:text-industrial-accent border border-blue-200 dark:border-industrial-accent/50 rounded-lg hover:bg-blue-600 hover:text-white dark:hover:bg-industrial-accent dark:hover:text-industrial-900 transition text-xs font-bold shadow-sm flex items-center justify-center gap-1 flex-1 sm:flex-none">
                           <el-icon><Picture /></el-icon>上传照片完成
                         </button>
                         <button v-if="step.status === 'completed'" @click="doRollback(step)" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-red-500/10 text-red-500 border border-red-500/30 rounded-lg hover:bg-red-500/20 transition text-xs font-medium shadow-sm flex-1 sm:flex-none">撤回</button>
@@ -151,6 +155,32 @@
         />
       </div>
     </div>
+
+    <!-- 发外协对话框 -->
+    <el-dialog v-model="outsourceVisible" title="发外协" width="420px">
+      <el-form label-position="top">
+        <el-form-item label="工序"><strong>{{ outsourceStep?.name }}</strong></el-form-item>
+        <el-form-item label="外协厂商" required>
+          <el-select v-model="outsourceVendorId" filterable placeholder="选择厂商" style="width:100%">
+            <el-option v-for="v in vendors" :key="v.id" :label="v.name" :value="v.id" />
+          </el-select>
+        </el-form-item>
+        <p class="text-xs text-slate-400">发出后工序进入「外协中」状态，不能确认完成；收回后回到正常报工流。</p>
+      </el-form>
+      <template #footer><el-button @click="outsourceVisible=false">取消</el-button><el-button type="primary" @click="doOutsource" :loading="outsourceSaving">确认发出</el-button></template>
+    </el-dialog>
+
+    <!-- 收回外协对话框 -->
+    <el-dialog v-model="outsourceReturnVisible" title="收回外协件" width="420px">
+      <el-form label-position="top">
+        <el-form-item label="工序"><strong>{{ outsourceStep?.name }}</strong></el-form-item>
+        <el-form-item label="外协费用（可选）">
+          <el-input-number v-model="outsourceCost" :min="0" :precision="2" style="width:100%" placeholder="填入本次外协费用" />
+        </el-form-item>
+        <p class="text-xs text-slate-400">收回后工序回到「进行中」，由负责人正常确认完成；费用将计入厂商成本汇总。</p>
+      </el-form>
+      <template #footer><el-button @click="outsourceReturnVisible=false">取消</el-button><el-button type="primary" @click="doOutsourceReturn" :loading="outsourceSaving">确认收回</el-button></template>
+    </el-dialog>
 
     <!-- 工序照片上传对话框 -->
     <el-dialog v-model="uploadDialogVisible" title="工序完成确认 — 上传照片" width="460px" @close="resetUpload">
@@ -223,6 +253,54 @@ import DrawingPanel from '../components/DrawingPanel.vue';
 import OrderMaterials from '../components/OrderMaterials.vue';
 import { UploadFilled, Picture, ZoomIn, Close } from '@element-plus/icons-vue';
 
+// 外协（T7）状态与方法
+const vendors = ref([]);
+const outsourceVisible = ref(false);
+const outsourceReturnVisible = ref(false);
+const outsourceStep = ref(null);
+const outsourceVendorId = ref(null);
+const outsourceCost = ref(null);
+const outsourceSaving = ref(false);
+
+function stepVendorName(step) {
+  return step.vendor_name || (vendors.value.find(v => v.id === step.vendor_id)?.name) || '外协厂商';
+}
+async function fetchVendors() {
+  try { vendors.value = (await api.get('/vendors')).data; } catch (e) { console.error(e); }
+}
+function openOutsource(step) {
+  outsourceStep.value = step;
+  outsourceVendorId.value = step.vendor_id || null;
+  fetchVendors();
+  outsourceVisible.value = true;
+}
+async function doOutsource() {
+  if (!outsourceVendorId.value) return ElMessage.error('请选择外协厂商');
+  outsourceSaving.value = true;
+  try {
+    await api.post(`/orders/${order.value.id}/steps/${outsourceStep.value.id}/outsource`, { vendor_id: outsourceVendorId.value });
+    outsourceVisible.value = false;
+    await fetchOrder();
+    ElMessage.success('已发外协');
+  } catch (e) { ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '发外协失败'); }
+  finally { outsourceSaving.value = false; }
+}
+function openOutsourceReturn(step) {
+  outsourceStep.value = step;
+  outsourceCost.value = null;
+  outsourceReturnVisible.value = true;
+}
+async function doOutsourceReturn() {
+  outsourceSaving.value = true;
+  try {
+    await api.post(`/orders/${order.value.id}/steps/${outsourceStep.value.id}/outsource-return`, { cost: outsourceCost.value });
+    outsourceReturnVisible.value = false;
+    await fetchOrder();
+    ElMessage.success('外协件已收回');
+  } catch (e) { ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '收回失败'); }
+  finally { outsourceSaving.value = false; }
+}
+
 // 工序传照确认相关状态
 const uploadDialogVisible = ref(false);
 const activeUploadStep = ref(null);
@@ -268,6 +346,7 @@ async function fetchOrder() {
 // Visual Helpers
 function nodeColor(s) { 
   if (s.status === 'completed') return 'bg-green-500 border-white dark:border-industrial-900 shadow-md dark:shadow-[0_0_12px_rgba(34,197,94,0.9)]'; 
+  if (s.status === 'outsourced') return 'bg-purple-500 border-white dark:border-industrial-900 shadow-lg ring-2 ring-purple-500/30';
   if (s.status === 'in_progress') return 'bg-red-500 border-white dark:border-industrial-900 shadow-lg dark:shadow-[0_0_18px_rgba(244,63,94,0.95)] animate-pulse ring-2 ring-red-500/20'; 
   if (s.status === 'skipped') return 'bg-green-300 dark:bg-green-800/80 border-white dark:border-slate-800'; 
   // 未完成/未开始的工序：亮起鲜艳的红色灯，并在暗黑模式下呈现明显的光晕
@@ -305,12 +384,12 @@ function completionInfo(s) {
   return ''; 
 }
 
-function canAct(s) { return s.status === 'pending' || s.status === 'in_progress' || s.status === 'completed'; }
+function canAct(s) { return s.status === 'pending' || s.status === 'in_progress' || s.status === 'outsourced' || s.status === 'completed'; }
 
 // Actions
 async function doAdvance(step) {
   try { await api.post(`/orders/${order.value.id}/steps/${step.id}/advance`); await fetchOrder(); ElMessage.success('工序已完成'); }
-  catch (e) { ElMessage.error(e.response?.data?.error || '操作失败'); }
+  catch (e) { ElMessage.error(e.response?.data?.error || e.response?.data?.detail || '操作失败'); }
 }
 async function doRollback(step) {
   try { await api.post(`/orders/${order.value.id}/steps/${step.id}/rollback`); await fetchOrder(); ElMessage.success('已撤回'); }
@@ -339,6 +418,7 @@ function stepStatusLabel(status) {
   const m = {
     pending: '等待中',
     in_progress: '进行中',
+    outsourced: '外协中',
     completed: '已完成',
     skipped: '已跳过'
   };

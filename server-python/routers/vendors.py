@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
+from sqlalchemy import func
 from database import get_db
 from routers.auth import get_current_user
 import models, schemas
@@ -101,3 +102,59 @@ def delete_vendor(vendor_id: int, db: Session = Depends(get_db)):
     db.delete(db_vendor)
     db.commit()
     return {"ok": True}
+
+
+# ────────────────────────── 外协总览（T7） ──────────────────────────
+
+@router.get("/outsourcing/overview")
+def outsourcing_overview(db: Session = Depends(get_db)):
+    """外协生命周期总览：在外协件 + 按厂商成本汇总。
+
+    在外协件 = status='outsourced' 的工序（含订单/产品/厂商/发出天数）；
+    成本汇总 = 全部已收回外协工序的 cost 按厂商聚合。"""
+    from datetime import datetime
+
+    active_rows = (
+        db.query(models.ProcessStep, models.Order, models.Vendor)
+        .join(models.ProcessFlow, models.ProcessStep.flow_id == models.ProcessFlow.id)
+        .join(models.Order, models.ProcessFlow.order_id == models.Order.id)
+        .outerjoin(models.Vendor, models.ProcessStep.vendor_id == models.Vendor.id)
+        .filter(models.ProcessStep.status == "outsourced")
+        .order_by(models.ProcessStep.sent_date.asc())
+        .all()
+    )
+    today = datetime.now()
+    active = [{
+        "step_id": s.id,
+        "order_id": o.id,
+        "order_no": o.order_no,
+        "product_name": o.product_name,
+        "step_name": s.name,
+        "vendor_id": s.vendor_id,
+        "vendor_name": v.name if v else "未知厂商",
+        "sent_date": str(s.sent_date.date()) if s.sent_date else "",
+        "days_out": (today - s.sent_date).days if s.sent_date else 0,
+    } for s, o, v in active_rows]
+
+    cost_rows = (
+        db.query(
+            models.Vendor.id,
+            models.Vendor.name,
+            func.count(models.ProcessStep.id).label("steps_count"),
+            func.coalesce(func.sum(models.ProcessStep.cost), 0).label("total_cost"),
+        )
+        .join(models.ProcessStep, models.ProcessStep.vendor_id == models.Vendor.id)
+        .filter(models.ProcessStep.cost != None)  # noqa: E711
+        .group_by(models.Vendor.id, models.Vendor.name)
+        .order_by(func.coalesce(func.sum(models.ProcessStep.cost), 0).desc())
+        .all()
+    )
+    costs = [{"vendor_id": r.id, "vendor_name": r.name, "steps_count": r.steps_count,
+              "total_cost": float(r.total_cost)} for r in cost_rows]
+
+    return {
+        "active": active,
+        "active_count": len(active),
+        "costs": costs,
+        "total_cost": sum(c["total_cost"] for c in costs),
+    }

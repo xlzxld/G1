@@ -8,6 +8,47 @@
       <el-button v-if="auth.canEdit('outsourcing')" type="primary" @click="openCreate"><el-icon><Plus /></el-icon> 新增厂商</el-button>
     </div>
 
+    <!-- 在外协件（T7 生命周期看板） -->
+    <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl shadow-md overflow-hidden" v-loading="ovLoading">
+      <div class="px-5 py-3.5 border-b border-slate-200 dark:border-industrial-border flex items-center justify-between bg-slate-50/60 dark:bg-industrial-900/50">
+        <h3 class="font-semibold text-slate-800 dark:text-slate-200">
+          <span class="inline-block w-2 h-2 rounded-full bg-purple-500 mr-2"></span>在外协件
+        </h3>
+        <el-tag v-if="overview.active_count" type="warning" size="small">{{ overview.active_count }} 件在外</el-tag>
+      </div>
+      <div class="divide-y divide-slate-100 dark:divide-industrial-border/60 max-h-80 overflow-y-auto">
+        <router-link v-for="it in overview.active" :key="it.step_id" :to="`/orders/${it.order_id}`"
+          class="px-5 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-industrial-700/30">
+          <div>
+            <p class="text-sm font-mono text-slate-700 dark:text-slate-300">{{ it.order_no }}
+              <span class="font-sans text-slate-400">{{ it.product_name }}</span>
+            </p>
+            <p class="text-xs text-slate-500 mt-0.5">{{ it.step_name }} → <span class="text-purple-600 dark:text-purple-400 font-medium">{{ it.vendor_name }}</span></p>
+          </div>
+          <div class="text-right">
+            <p :class="['text-xs font-bold', it.days_out > 7 ? 'text-red-500' : 'text-slate-500']">已发 {{ it.days_out }} 天</p>
+            <p class="text-[10px] text-slate-400">{{ it.sent_date }}</p>
+          </div>
+        </router-link>
+        <div v-if="!overview.active_count" class="px-5 py-6 text-center text-sm text-slate-400">当前没有在外协件 ✓</div>
+      </div>
+    </div>
+
+    <!-- 厂商成本汇总 -->
+    <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl shadow-md overflow-hidden" v-if="overview.costs && overview.costs.length">
+      <div class="px-5 py-3.5 border-b border-slate-200 dark:border-industrial-border bg-slate-50/60 dark:bg-industrial-900/50 flex items-center justify-between">
+        <h3 class="font-semibold text-slate-800 dark:text-slate-200">外协成本汇总</h3>
+        <span class="text-sm font-bold text-slate-700 dark:text-slate-300">合计 ¥{{ overview.total_cost?.toLocaleString() }}</span>
+      </div>
+      <div class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div v-for="c in overview.costs" :key="c.vendor_id" class="border border-slate-200 dark:border-industrial-border rounded-lg p-3">
+          <p class="text-sm font-semibold text-slate-800 dark:text-slate-200">{{ c.vendor_name }}</p>
+          <p class="text-xs text-slate-400 mt-0.5">{{ c.steps_count }} 道工序</p>
+          <p class="text-lg font-black text-slate-800 dark:text-slate-100 mt-1">¥{{ c.total_cost?.toLocaleString() }}</p>
+        </div>
+      </div>
+    </div>
+
     <div class="bg-white dark:bg-industrial-800 border border-slate-200 dark:border-industrial-border rounded-xl p-4 flex flex-wrap gap-3 items-center shadow-md">
       <el-input v-model="keyword" placeholder="搜索厂商" clearable class="w-full sm:w-60" @keyup.enter="handleSearch" />
       <el-button type="primary" @click="handleSearch" class="w-full sm:w-auto">搜索</el-button>
@@ -205,6 +246,18 @@ async function fetchData(silent = false) {
   catch {} 
   finally { loading.value = false; } 
 }
+
+// 外协生命周期总览（T7）
+const overview = ref({ active: [], active_count: 0, costs: [], total_cost: 0 });
+const ovLoading = ref(false);
+async function fetchOverview() {
+  ovLoading.value = true;
+  try { overview.value = (await api.get('/vendors/outsourcing/overview')).data; }
+  catch (e) { console.error(e); }
+  finally { ovLoading.value = false; }
+}
+
+onMounted(() => fetchOverview());
 
 function handleSearch() {
   highlightedId.value = null;

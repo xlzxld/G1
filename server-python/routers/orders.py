@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from database import get_db
 from routers.auth import get_current_user
 from routers.inventory import require_inventory_edit
@@ -269,12 +269,17 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
     flow = db.query(models.ProcessFlow).filter(models.ProcessFlow.order_id == order.id).first()
     if flow:
         steps = db.query(models.ProcessStep).filter(models.ProcessStep.flow_id == flow.id).order_by(models.ProcessStep.seq).all()
+        vendor_ids = {s.vendor_id for s in steps if s.vendor_id}
+        vendor_names = {v.id: v.name for v in db.query(models.Vendor).filter(models.Vendor.id.in_(vendor_ids))} if vendor_ids else {}
         order_dict["steps"] = [
             {
                 "id": s.id, "name": s.name, "seq": s.seq, "required": s.required,
                 "outsourced": s.outsourced,
                 "assignee": s.assignee, "status": s.status, "completion_condition": s.completion_condition,
-                "started_at": s.started_at, "completed_at": s.completed_at
+                "started_at": s.started_at, "completed_at": s.completed_at,
+                "vendor_id": s.vendor_id,
+                "vendor_name": vendor_names.get(s.vendor_id),
+                "cost": s.cost,
             } for s in steps
         ]
         
@@ -332,6 +337,10 @@ def advance_step(order_id: int, step_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Step not found")
     if step.status in ('completed', 'skipped'):
         raise HTTPException(status_code=400, detail="该工序已完成或已跳过，不能重复确认")
+    if step.status == 'outsourced':
+        vendor = db.query(models.Vendor).filter(models.Vendor.id == step.vendor_id).first()
+        vname = vendor.name if vendor else f"#{step.vendor_id}"
+        raise HTTPException(status_code=400, detail=f"工序正在外协（{vname}），请先收回再确认完成")
 
     if step.completion_condition == 'photo':
         doc_count = db.query(models.Document).filter(models.Document.step_id == step_id).count()
@@ -388,11 +397,71 @@ def advance_step(order_id: int, step_id: int, db: Session = Depends(get_db),
         _notify_order_completed(order, db)
     return {"ok": True}
 
+class OutsourceRequest(BaseModel):
+    vendor_id: int
+
+class OutsourceReturnRequest(BaseModel):
+    cost: Optional[float] = None
+
+@router.post("/{order_id}/steps/{step_id}/outsource")
+def outsource_step(order_id: int, step_id: int, payload: OutsourceRequest,
+                   db: Session = Depends(get_db),
+                   current_user: models.User = Depends(get_current_user)):
+    """发外协：工序交由厂商加工（T7 外协生命周期）。
+
+    pending/in_progress → outsourced，记录 vendor_id + sent_date；
+    外协期间禁止确认完成，收回后回到 in_progress 由工人正常报工。"""
+    step = db.query(models.ProcessStep).filter(models.ProcessStep.id == step_id, models.ProcessStep.flow_id == db.query(models.ProcessFlow.id).filter(models.ProcessFlow.order_id == order_id).scalar_subquery()).first()
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    if step.status in ('completed', 'skipped'):
+        raise HTTPException(status_code=400, detail="已终态的工序不能发外协")
+    if step.status == 'outsourced':
+        raise HTTPException(status_code=400, detail="该工序已在外协中，不能重复发出")
+    vendor = db.query(models.Vendor).filter(models.Vendor.id == payload.vendor_id).first()
+    if not vendor:
+        raise HTTPException(status_code=404, detail="外协厂商不存在")
+
+    from datetime import datetime
+    step.status = 'outsourced'
+    step.vendor_id = vendor.id
+    step.sent_date = datetime.utcnow()
+    if not step.started_at:
+        step.started_at = step.sent_date
+    db.commit()
+    return {"ok": True, "vendor_name": vendor.name, "sent_date": str(step.sent_date)}
+
+
+@router.post("/{order_id}/steps/{step_id}/outsource-return")
+def outsource_return_step(order_id: int, step_id: int, payload: OutsourceReturnRequest,
+                          db: Session = Depends(get_db),
+                          current_user: models.User = Depends(get_current_user)):
+    """收回外协件：outsourced → in_progress，记录 return_date + cost（可选）。
+    收回后工序回到正常报工流，由负责人确认完成。"""
+    step = db.query(models.ProcessStep).filter(models.ProcessStep.id == step_id, models.ProcessStep.flow_id == db.query(models.ProcessFlow.id).filter(models.ProcessFlow.order_id == order_id).scalar_subquery()).first()
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    if step.status != 'outsourced':
+        raise HTTPException(status_code=400, detail="该工序不在外协中，无法收回")
+
+    from datetime import datetime
+    step.status = 'in_progress'
+    step.return_date = datetime.utcnow()
+    if payload.cost is not None:
+        if payload.cost < 0:
+            raise HTTPException(status_code=400, detail="外协费用不能为负")
+        step.cost = payload.cost
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/{order_id}/steps/{step_id}/rollback")
 def rollback_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
     step = db.query(models.ProcessStep).filter(models.ProcessStep.id == step_id, models.ProcessStep.flow_id == db.query(models.ProcessFlow.id).filter(models.ProcessFlow.order_id == order_id).scalar_subquery()).first()
     if not step:
         raise HTTPException(status_code=404, detail="Step not found")
+    if step.status == 'outsourced':
+        raise HTTPException(status_code=400, detail="工序正在外协中，请先收回再撤回")
     step.status = 'in_progress'
     step.completed_at = None
     step.completed_by = None
@@ -415,6 +484,8 @@ def skip_step(order_id: int, step_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="必做工序不能跳过")
     if step.status in ('completed', 'skipped'):
         raise HTTPException(status_code=400, detail="该工序已终态，不能跳过")
+    if step.status == 'outsourced':
+        raise HTTPException(status_code=400, detail="工序正在外协中，请先收回再跳过")
     step.status = 'skipped'
 
     # Check if this triggers order auto-completion
