@@ -43,11 +43,9 @@
 - SSE one-time ticket 鉴权（token 在 URL query 中会进代理日志；沿用 T2 依赖）
 - BOM apply 单事务化（当前逐项 commit + 全量 catch 警告清单，部分成功语义已可用）
 
-## T7 外协全生命周期（autoplan R3 缓办首项，2026-09-07）
+## T7 外协全生命周期 ✅ 已完成（2026-09-08）
 
-- **What**: 订单工序"发外协/收回"动作（写 sent_date/return_date/vendor_id/cost，当前全库零写入）；外协页加"在外协件"列表（厂商→工序→发出天数）与成本汇总。
-- **Why**: 老板最痛的"外协件在外面压了多久、花了多少钱"系统完全失明；外协页现状只是厂商通讯录。
-- **Effort**: L（人工 4-6 天 / CC 1-2 小时）　**Priority**: P1（建议下一个大项）　**Depends**: 无（字段已就位）。
+- 已落地：`/orders/{id}/steps/{id}/outsource` + `/outsource-return` 端点（写 sent_date/return_date/vendor_id/cost）；外协中禁止确认完成/跳过/撤回；订单详情回传 vendor_id/vendor_name/cost；外协页新增"在外协件"看板（厂商→工序→发出天数）与按厂商成本汇总。回归：`test_outsource_lifecycle` / `test_outsource_guards`。
 
 ## T8 R3 其余缓办项
 
