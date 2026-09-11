@@ -82,3 +82,7 @@ client/.cache/
 
 # gstack / local AI tooling state
 .gstack/
+
+# 本地工作区与同步器机器记录
+.workbuddy/
+.agents/.source
